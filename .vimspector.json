@@ -1,0 +1,22 @@
+{
+    "configurations": {
+        "Launch": {
+            "adapter": "vscode-cpptools",
+            "filetypes": [
+                "cpp",
+                "c",
+                "objc",
+                "rust"
+            ],
+            "configuration": {
+                "request": "launch",
+                "program": "~/catkin_ws/devel/lib/feature_tracker/feature_tracker",
+                "args": [],
+                "cwd": "${workspaceRoot}",
+                "environment": [],
+                "externalConsole": true,
+                "MIMode": "gdb"
+            }
+        }
+    }
+}

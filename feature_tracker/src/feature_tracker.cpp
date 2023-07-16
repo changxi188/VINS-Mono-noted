@@ -15,8 +15,12 @@ void reduceVector(vector<cv::Point2f>& v, vector<uchar> status)
 {
     int j = 0;
     for (int i = 0; i < int(v.size()); i++)
+    {
         if (status[i])
+        {
             v[j++] = v[i];
+        }
+    }
     v.resize(j);
 }
 
@@ -45,7 +49,10 @@ void FeatureTracker::setMask()
     vector<pair<int, pair<cv::Point2f, int>>> cnt_pts_id;
 
     for (unsigned int i = 0; i < forw_pts.size(); i++)
+    {
         cnt_pts_id.push_back(make_pair(track_cnt[i], make_pair(forw_pts[i], ids[i])));
+    }
+
     // 利用光流特点，追踪多的稳定性好，排前面
     sort(cnt_pts_id.begin(), cnt_pts_id.end(),
          [](const pair<int, pair<cv::Point2f, int>>& a, const pair<int, pair<cv::Point2f, int>>& b) {
@@ -132,6 +139,9 @@ void FeatureTracker::readImage(const cv::Mat& _img, double _cur_time)
         // Step 1 通过opencv光流追踪给的状态位剔除outlier
         cv::calcOpticalFlowPyrLK(cur_img, forw_img, cur_pts, forw_pts, status, err, cv::Size(21, 21), 3);
 
+        LOG(INFO) << "readImage --- After optical flow cur_pts size : " << cur_pts.size()
+                  << ", forw_pts size : " << forw_pts.size();
+
         for (int i = 0; i < int(forw_pts.size()); i++)
         {
             // Step 2 通过图像边界剔除outlier
@@ -146,6 +156,7 @@ void FeatureTracker::readImage(const cv::Mat& _img, double _cur_time)
         reduceVector(ids, status);         // 特征点的id
         reduceVector(cur_un_pts, status);  // 去畸变后的坐标
         reduceVector(track_cnt, status);   // 追踪次数
+
         LOG(INFO) << "readImage --- temporal optical flow costs: " << t_o.toc() << "ms";
     }
 
@@ -247,10 +258,10 @@ void FeatureTracker::rejectWithF()
         reduceVector(prev_pts, status);
         reduceVector(cur_pts, status);
         reduceVector(forw_pts, status);
-        reduceVector(cur_un_pts, status);
         reduceVector(ids, status);
+        reduceVector(cur_un_pts, status);
         reduceVector(track_cnt, status);
-        LOG(INFO) << "rejectWithF --- FM ransac:  " << size_a << "-> " << forw_pts.size() << " : %f"
+        LOG(INFO) << "rejectWithF --- FM ransac:  " << size_a << "-> " << forw_pts.size() << " : "
                   << 1.0 * forw_pts.size() / size_a;
         LOG(INFO) << "rejectWithF --- FM ransac costs: " << t_f.toc() << "ms";
     }

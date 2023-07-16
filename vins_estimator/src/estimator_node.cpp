@@ -61,6 +61,7 @@ void predict(const sensor_msgs::ImuConstPtr& imu_msg)
     double          dy = imu_msg->linear_acceleration.y;
     double          dz = imu_msg->linear_acceleration.z;
     Eigen::Vector3d linear_acceleration{dx, dy, dz};
+
     // 得到角速度
     double          rx = imu_msg->angular_velocity.x;
     double          ry = imu_msg->angular_velocity.y;
@@ -84,6 +85,7 @@ void predict(const sensor_msgs::ImuConstPtr& imu_msg)
     acc_0 = linear_acceleration;
     gyr_0 = angular_velocity;
 }
+
 // 用最新VIO结果更新最新imu对应的位姿
 void update()
 {
@@ -99,8 +101,17 @@ void update()
 
     queue<sensor_msgs::ImuConstPtr> tmp_imu_buf = imu_buf;  // 遗留的imu的buffer，因为下面需要pop，所以copy了一份
     for (sensor_msgs::ImuConstPtr tmp_imu_msg; !tmp_imu_buf.empty(); tmp_imu_buf.pop())
+    {
         // 得到最新imu时刻的可靠的位姿
         predict(tmp_imu_buf.front());
+    }
+}
+
+std::string TimestampPrint(const uint64_t nsec)
+{
+    uint64_t sec  = static_cast<uint64_t>(std::floor(nsec / 1000000000));
+    uint64_t msec = static_cast<uint64_t>(nsec % 1000000000);
+    return std::to_string(sec) + ", " + std::to_string(msec);
 }
 
 // 获得匹配好的图像imu组
@@ -111,25 +122,39 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>, sensor_msgs::PointC
     while (true)
     {
         if (imu_buf.empty() || feature_buf.empty())
+        {
+            // LOG(WARNING) << "getMeasurements --- imu or feature buffer is empty.";
             return measurements;
+        }
+
         // imu   *******
         // image          *****
         // 这就是imu还没来
-        if (!(imu_buf.back()->header.stamp.toSec() > feature_buf.front()->header.stamp.toSec() + estimator.td))
+        if (imu_buf.back()->header.stamp.toSec() <= feature_buf.front()->header.stamp.toSec() + estimator.td)
         {
-            // ROS_WARN("wait for imu, only should happen at the beginning");
+            LOG(WARNING) << "getMeasurements --- wait for imu, only should happen at the beginning";
+            LOG(WARNING) << "getMeasurements --- imu buffer back timestamp : "
+                         << TimestampPrint(imu_buf.back()->header.stamp.toNSec())
+                         << ", feature buffer front timestamp : "
+                         << TimestampPrint(feature_buf.front()->header.stamp.toNSec()) << "\n";
             sum_of_wait++;
             return measurements;
         }
+
         // imu        ****
         // image    ******
         // 这种只能扔掉一些image帧
-        if (!(imu_buf.front()->header.stamp.toSec() < feature_buf.front()->header.stamp.toSec() + estimator.td))
+        if (imu_buf.front()->header.stamp.toSec() >= feature_buf.front()->header.stamp.toSec() + estimator.td)
         {
-            ROS_WARN("throw img, only should happen at the beginning");
+            LOG(WARNING) << "getMeasurements --- throw img, only should happen at the beginning";
+            LOG(WARNING) << "getMeasurements --- imu buffer front timestamp : "
+                         << TimestampPrint(imu_buf.front()->header.stamp.toNSec())
+                         << ", feature buffer front timestamp : "
+                         << TimestampPrint(feature_buf.front()->header.stamp.toNSec()) << "\n";
             feature_buf.pop();
             continue;
         }
+
         // 此时就保证了图像前一定有imu数据
         sensor_msgs::PointCloudConstPtr img_msg = feature_buf.front();
         feature_buf.pop();
@@ -140,14 +165,19 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>, sensor_msgs::PointC
             IMUs.emplace_back(imu_buf.front());
             imu_buf.pop();
         }
+
         // 保留图像时间戳后一个imu数据，但不会从buffer中扔掉
         // imu    *   *
         // image    *
         IMUs.emplace_back(imu_buf.front());
+
         if (IMUs.empty())
-            ROS_WARN("no imu between two image");
+        {
+            LOG(WARNING) << "getMeasurements --- no imu between two image";
+        }
         measurements.emplace_back(IMUs, img_msg);
     }
+
     return measurements;
 }
 
@@ -160,7 +190,7 @@ void imu_callback(const sensor_msgs::ImuConstPtr& imu_msg)
 {
     if (imu_msg->header.stamp.toSec() <= last_imu_t)
     {
-        ROS_WARN("imu message in disorder!");
+        LOG(WARNING) << "imu_callback --- imu message in disorder!";
         return;
     }
     last_imu_t = imu_msg->header.stamp.toSec();
@@ -179,7 +209,9 @@ void imu_callback(const sensor_msgs::ImuConstPtr& imu_msg)
         header.frame_id         = "world";
         // 只有初始化完成后才发送当前结果
         if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)
+        {
             pubLatestOdometry(tmp_P, tmp_Q, tmp_V, header);
+        }
     }
 }
 
@@ -212,12 +244,18 @@ void restart_callback(const std_msgs::BoolConstPtr& restart_msg)
 {
     if (restart_msg->data == true)
     {
-        ROS_WARN("restart the estimator!");
+        LOG(WARNING) << "restart_callback --- restart the estimator!";
         m_buf.lock();
         while (!feature_buf.empty())
+        {
             feature_buf.pop();
+        }
+
         while (!imu_buf.empty())
+        {
             imu_buf.pop();
+        }
+
         m_buf.unlock();
         m_estimator.lock();
         estimator.clearState();
@@ -231,7 +269,7 @@ void restart_callback(const std_msgs::BoolConstPtr& restart_msg)
 
 void relocalization_callback(const sensor_msgs::PointCloudConstPtr& points_msg)
 {
-    // printf("relocalization callback! \n");
+    LOG(WARNING) << "restart_callback --- get relocalization msg! ";
     m_buf.lock();
     relo_buf.push(points_msg);
     m_buf.unlock();
@@ -245,22 +283,26 @@ void process()
         std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>, sensor_msgs::PointCloudConstPtr>> measurements;
         std::unique_lock<std::mutex>                                                                   lk(m_buf);
         con.wait(lk, [&] { return (measurements = getMeasurements()).size() != 0; });
-        lk.unlock();         // 数据buffer的锁解锁，回调可以继续塞数据了
+        lk.unlock();  // 数据buffer的锁解锁，回调可以继续塞数据了
+
         m_estimator.lock();  // 进行后端求解，不能和复位重启冲突
         // 给予范围的for循环，这里就是遍历每组image imu组合
-        for (auto& measurement : measurements)
+        for (const auto& measurement : measurements)
         {
+            LOG(INFO) << "process --- success get measurements, imu size : " << measurement.first.size();
             auto   img_msg = measurement.second;
             double dx = 0, dy = 0, dz = 0, rx = 0, ry = 0, rz = 0;
             // 遍历imu
-            for (auto& imu_msg : measurement.first)
+            for (const auto& imu_msg : measurement.first)
             {
                 double t     = imu_msg->header.stamp.toSec();
                 double img_t = img_msg->header.stamp.toSec() + estimator.td;
                 if (t <= img_t)
                 {
                     if (current_time < 0)
+                    {
                         current_time = t;
+                    }
                     double dt = t - current_time;
                     ROS_ASSERT(dt >= 0);
                     current_time = t;
@@ -294,6 +336,7 @@ void process()
                     // printf("dimu: dt:%f a: %f %f %f w: %f %f %f\n",dt_1, dx, dy, dz, rx, ry, rz);
                 }
             }
+
             // set relocalization frame
             // 回环相关部分
             sensor_msgs::PointCloudConstPtr relo_msg = NULL;
@@ -302,6 +345,7 @@ void process()
                 relo_msg = relo_buf.front();
                 relo_buf.pop();
             }
+
             if (relo_msg != NULL)  // 有效回环信息
             {
                 vector<Vector3d> match_points;
@@ -325,7 +369,8 @@ void process()
                 estimator.setReloFrame(frame_stamp, frame_index, match_points, relo_t, relo_r);
             }
 
-            ROS_DEBUG("processing vision data with stamp %f \n", img_msg->header.stamp.toSec());
+            LOG(INFO) << "process --- processing vision data with stamp "
+                      << TimestampPrint(img_msg->header.stamp.toNSec());
 
             TicToc t_s;
             // 特征点id->特征点信息
@@ -362,14 +407,20 @@ void process()
             pubTF(estimator, header);
             pubKeyframe(estimator);
             if (relo_msg != NULL)
+            {
                 pubRelocalization(estimator);
+            }
             // ROS_ERROR("end: %f, at %f", img_msg->header.stamp.toSec(), ros::Time::now().toSec());
         }
+
         m_estimator.unlock();
         m_buf.lock();
         m_state.lock();
         if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)
+        {
             update();
+        }
+
         m_state.unlock();
         m_buf.unlock();
     }
@@ -379,13 +430,22 @@ int main(int argc, char** argv)
 {
     ros::init(argc, argv, "vins_estimator");
     ros::NodeHandle n("~");
+    // initialize glog
+    bool log_to_screen = readParam<bool>(n, "log_to_screen");
+    google::InitGoogleLogging(argv[0]);
+    google::SetLogDestination(google::INFO, "./log/vins_estimator/estimator_node.log");
+    FLAGS_colorlogtostderr = true;
+    FLAGS_alsologtostderr  = log_to_screen;
+    FLAGS_minloglevel      = 0;
+
     ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
     readParameters(n);
+
     estimator.setParameter();
 #ifdef EIGEN_DONT_PARALLELIZE
-    ROS_DEBUG("EIGEN_DONT_PARALLELIZE");
+    LOG(INFO) << "main --- EIGEN_DONT_PARALLELIZE";
 #endif
-    ROS_WARN("waiting for image and imu...");
+    LOG(INFO) << "main --- waiting for image and imu...";
 
     // 注册一些publisher
     registerPub(n);
@@ -399,7 +459,7 @@ int main(int argc, char** argv)
     ros::Subscriber sub_relo_points = n.subscribe("/pose_graph/match_points", 2000, relocalization_callback);
 
     // 核心处理线程
-    std::thread measurement_process{process};
+    std::thread measurement_process(process);
     ros::spin();
 
     return 0;

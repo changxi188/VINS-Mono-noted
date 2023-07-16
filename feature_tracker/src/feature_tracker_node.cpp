@@ -154,20 +154,19 @@ void img_callback(const sensor_msgs::ImageConstPtr& img_msg)
     feature_points->header          = img_msg->header;
     feature_points->header.frame_id = "world";
 
-    vector<set<int>> hash_ids(NUM_OF_CAM);
     for (int i = 0; i < NUM_OF_CAM; i++)
     {
-        auto& un_pts       = trackerData[i].cur_un_pts;    // 去畸变的归一化相机坐标系
-        auto& cur_pts      = trackerData[i].cur_pts;       // 像素坐标
-        auto& ids          = trackerData[i].ids;           // id
-        auto& pts_velocity = trackerData[i].pts_velocity;  // 归一化坐标下的速度
+        auto&       un_pts       = trackerData[i].cur_un_pts;    // 去畸变的归一化相机坐标系
+        auto&       cur_pts      = trackerData[i].cur_pts;       // 像素坐标
+        auto&       ids          = trackerData[i].ids;           // id
+        auto&       pts_velocity = trackerData[i].pts_velocity;  // 归一化坐标下的速度
+        vector<int> track_cnt    = trackerData[i].track_cnt;     // 特征点的跟踪次数
         for (unsigned int j = 0; j < ids.size(); j++)
         {
             // 只发布追踪大于1的，因为等于1没法构成重投影约束，也没法三角化
-            if (trackerData[i].track_cnt[j] > 1)
+            if (track_cnt[j] > 1)
             {
-                int p_id = ids[j];
-                hash_ids[i].insert(p_id);  // 这个并没有用到
+                int                    p_id = ids[j];
                 geometry_msgs::Point32 p;
                 p.x = un_pts[j].x;
                 p.y = un_pts[j].y;
@@ -246,10 +245,10 @@ int main(int argc, char** argv)
     ros::NodeHandle n("~");                    // 声明一个句柄，～代表这个节点的命名空间
     ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);  // 设置ros log级别
     readParameters(n);                                                                    // 读取配置文件
-    bool log_to_screen = readParam<bool>(n, "log_to_screen");
 
+    bool log_to_screen = readParam<bool>(n, "log_to_screen");
     google::InitGoogleLogging(argv[0]);
-    google::SetLogDestination(google::INFO, "./log/feature_tracker.log");
+    google::SetLogDestination(google::INFO, "./log/feature_tracker/feature_tracker.log");
     FLAGS_colorlogtostderr = true;
     FLAGS_alsologtostderr  = log_to_screen;
     FLAGS_minloglevel      = 0;
