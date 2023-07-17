@@ -11,6 +11,7 @@ class IntegrationBase
 {
 public:
     IntegrationBase() = delete;
+
     IntegrationBase(const Eigen::Vector3d& _acc_0, const Eigen::Vector3d& _gyr_0, const Eigen::Vector3d& _linearized_ba,
                     const Eigen::Vector3d& _linearized_bg)
       : acc_0{_acc_0}

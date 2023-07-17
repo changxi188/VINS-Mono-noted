@@ -118,7 +118,7 @@ public:
     MarginalizationInfo* last_marginalization_info;
     vector<double*>      last_marginalization_parameter_blocks;
 
-    map<double, ImageFrame> all_image_frame;
+    map<double, ImageFrame> all_image_frame;  // timestamp to image
     IntegrationBase*        tmp_pre_integration;
 
     // relocalization variable

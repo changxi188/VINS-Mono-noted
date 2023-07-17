@@ -23,6 +23,14 @@ std::string IMU_TOPIC;
 double      ROW, COL;
 double      TD, TR;
 
+std::string TimestampPrint(const uint64_t nsec)
+{
+    uint64_t sec  = static_cast<uint64_t>(std::floor(nsec / 1000000000));
+    uint64_t msec = static_cast<uint64_t>(nsec % 1000000000);
+
+    return std::to_string(sec) + ", " + std::to_string(msec);
+}
+
 void readParameters(ros::NodeHandle& n)
 {
     std::string config_file;

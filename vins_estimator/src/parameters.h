@@ -57,6 +57,8 @@ T readParam(ros::NodeHandle& n, std::string name)
     return ans;
 }
 
+std::string TimestampPrint(const uint64_t nsec);
+
 void readParameters(ros::NodeHandle& n);
 
 enum SIZE_PARAMETERIZATION

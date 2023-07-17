@@ -107,13 +107,6 @@ void update()
     }
 }
 
-std::string TimestampPrint(const uint64_t nsec)
-{
-    uint64_t sec  = static_cast<uint64_t>(std::floor(nsec / 1000000000));
-    uint64_t msec = static_cast<uint64_t>(nsec % 1000000000);
-    return std::to_string(sec) + ", " + std::to_string(msec);
-}
-
 // 获得匹配好的图像imu组
 std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>, sensor_msgs::PointCloudConstPtr>> getMeasurements()
 {
@@ -360,7 +353,7 @@ void process()
                 }
                 // 回环帧的位姿
                 Vector3d    relo_t(relo_msg->channels[0].values[0], relo_msg->channels[0].values[1],
-                                   relo_msg->channels[0].values[2]);
+                                relo_msg->channels[0].values[2]);
                 Quaterniond relo_q(relo_msg->channels[0].values[3], relo_msg->channels[0].values[4],
                                    relo_msg->channels[0].values[5], relo_msg->channels[0].values[6]);
                 Matrix3d    relo_r = relo_q.toRotationMatrix();
@@ -410,7 +403,9 @@ void process()
             {
                 pubRelocalization(estimator);
             }
-            // ROS_ERROR("end: %f, at %f", img_msg->header.stamp.toSec(), ros::Time::now().toSec());
+
+            LOG(ERROR) << "process --- end: " << TimestampPrint(img_msg->header.stamp.toNSec()) << ", at "
+                       << TimestampPrint(ros::Time::now().toNSec()) << "\n\n";
         }
 
         m_estimator.unlock();
