@@ -607,7 +607,7 @@ void Estimator::solveOdometry()
         TicToc t_tri;
         // 先把应该三角化但是没有三角化的特征点三角化
         f_manager.triangulate(Ps, tic, ric);
-        ROS_DEBUG("triangulation costs %f", t_tri.toc());
+        LOG(INFO) << "solveOdometry --- triangulation costs " << t_tri.toc();
         optimization();
     }
 }
@@ -821,6 +821,7 @@ void Estimator::optimization()
         problem.AddParameterBlock(para_Pose[i], SIZE_POSE, local_parameterization);
         problem.AddParameterBlock(para_SpeedBias[i], SIZE_SPEEDBIAS);
     }
+
     // 参数块 2： 相机imu间的外参
     for (int i = 0; i < NUM_OF_CAM; i++)
     {
@@ -828,23 +829,28 @@ void Estimator::optimization()
         problem.AddParameterBlock(para_Ex_Pose[i], SIZE_POSE, local_parameterization);
         if (!ESTIMATE_EXTRINSIC)
         {
-            ROS_DEBUG("fix extinsic param");
+            LOG(INFO) << "optimization --- fix extinsic param";
             // 如果不需要优化外参就设置为fix
             problem.SetParameterBlockConstant(para_Ex_Pose[i]);
         }
         else
-            ROS_DEBUG("estimate extinsic param");
+        {
+            LOG(INFO) << "optimization --- estimate extinsic param";
+        }
     }
+
     // 传感器的时间同步
     if (ESTIMATE_TD)
     {
         problem.AddParameterBlock(para_Td[0], 1);
         // problem.SetParameterBlockConstant(para_Td[0]);
     }
+
     // 实际上还有地图点，其实平凡的参数块不需要调用AddParameterBlock，增加残差块接口时会自动绑定
     TicToc t_whole, t_prepare;
     // eigen -> double
     vector2double();
+
     // Step 2 通过残差约束来添加残差块，类似g2o的边
     // 上一次的边缘化结果作为这一次的先验
     if (last_marginalization_info)
@@ -865,6 +871,7 @@ void Estimator::optimization()
     }
     int f_m_cnt       = 0;
     int feature_index = -1;
+
     // 视觉重投影的约束
     // 遍历每一个特征点
     for (auto& it_per_id : f_manager.feature)
@@ -872,7 +879,9 @@ void Estimator::optimization()
         it_per_id.used_num = it_per_id.feature_per_frame.size();
         // 进行特征点有效性的检查
         if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+        {
             continue;
+        }
 
         ++feature_index;
         // 第一个观测到这个特征点的帧idx
@@ -919,8 +928,9 @@ void Estimator::optimization()
         }
     }
 
-    ROS_DEBUG("visual measurement count: %d", f_m_cnt);
-    ROS_DEBUG("prepare for ceres: %f", t_prepare.toc());
+    LOG(INFO) << "optimization --- visual measurement count: " << f_m_cnt;
+    LOG(INFO) << "optimization --- prepare for ceres: " << t_prepare.toc();
+
     // 回环检测相关的约束
     if (relocalization_info)
     {
@@ -934,7 +944,10 @@ void Estimator::optimization()
         {
             it_per_id.used_num = it_per_id.feature_per_frame.size();
             if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+            {
                 continue;
+            }
+
             ++feature_index;
             int start = it_per_id.start_frame;
             if (start <= relo_frame_local_index)  // 这个地图点能被对应的当前帧看到
@@ -971,16 +984,20 @@ void Estimator::optimization()
     // options.minimizer_progress_to_stdout = true;
     // options.use_nonmonotonic_steps = true;
     if (marginalization_flag == MARGIN_OLD)
+    {
         // 下面的边缘化老的操作比较多，因此给他优化时间就少一些
         options.max_solver_time_in_seconds = SOLVER_TIME * 4.0 / 5.0;
+    }
     else
+    {
         options.max_solver_time_in_seconds = SOLVER_TIME;
+    }
     TicToc                 t_solver;
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);  // ceres优化求解
     // cout << summary.BriefReport() << endl;
-    ROS_DEBUG("Iterations : %d", static_cast<int>(summary.iterations.size()));
-    ROS_DEBUG("solver costs: %f", t_solver.toc());
+    LOG(INFO) << "optimization --- Iterations : " << static_cast<int>(summary.iterations.size());
+    LOG(INFO) << "optimization --- solver costs: " << t_solver.toc();
     // 把优化后double -> eigen
     double2vector();
     // Step 4 边缘化
@@ -1085,7 +1102,7 @@ void Estimator::optimization()
         TicToc t_pre_margin;
         // 进行预处理
         marginalization_info->preMarginalize();
-        ROS_DEBUG("pre marginalization %f ms", t_pre_margin.toc());
+        LOG(INFO) << "optimization --- pre marginalization" << t_pre_margin.toc() << "  ms";
 
         TicToc t_margin;
         // 边缘化操作
