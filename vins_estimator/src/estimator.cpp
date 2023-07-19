@@ -317,7 +317,7 @@ bool Estimator::initialStructure()
         }
         // 得到的标准差
         var = sqrt(var / ((int)all_image_frame.size() - 1));
-        // ROS_WARN("IMU variation %f!", var);
+        LOG(INFO) << "initialStructure --- IMU variation " << var << ".";
         //  实际上检查结果并没有用
         if (var < 0.25)
         {
@@ -386,6 +386,7 @@ bool Estimator::initialStructure()
             i++;
             continue;
         }
+
         if ((frame_it->first) > Headers[i].stamp.toSec())
         {
             i++;
@@ -420,19 +421,22 @@ bool Estimator::initialStructure()
                 }
             }
         }
+
         cv::Mat K = (cv::Mat_<double>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
         if (pts_3_vector.size() < 6)
         {
-            cout << "pts_3_vector size " << pts_3_vector.size() << endl;
-            ROS_DEBUG("Not enough points for solve pnp !");
+            LOG(WARNING) << "initialStructure --- In all image frame, pts_3_vector size " << pts_3_vector.size();
+            LOG(WARNING) << "initialStructure --- In all image frame, not enough points for solve pnp !";
             return false;
         }
+
         // 依然是调用opencv求解pnp接口
         if (!cv::solvePnP(pts_3_vector, pts_2_vector, K, D, rvec, t, 1))
         {
-            ROS_DEBUG("solve pnp fail!");
+            LOG(WARNING) << "initialStructure --- In all image frame, solve pnp fail!";
             return false;
         }
+
         // cv -> eigen,同时Tcw -> Twc
         cv::Rodrigues(rvec, r);
         MatrixXd R_pnp, tmp_R_pnp;
@@ -469,7 +473,7 @@ bool Estimator::visualInitialAlign()
     bool result = VisualIMUAlignment(all_image_frame, Bgs, g, x);
     if (!result)
     {
-        ROS_DEBUG("solve g failed!");
+        LOG(WARNING) << "visualInitialAlign --- solve g failed!";
         return false;
     }
 
@@ -486,19 +490,25 @@ bool Estimator::visualInitialAlign()
 
     VectorXd dep = f_manager.getDepthVector();  // 根据有效特征点数初始化这个动态向量
     for (int i = 0; i < dep.size(); i++)
-        dep[i] = -1;            // 深度预设都是-1
+    {
+        dep[i] = -1;  // 深度预设都是-1
+    }
+
     f_manager.clearDepth(dep);  // 特征管理器把所有的特征点逆深度也设置为-1
 
     // triangulat on cam pose , no tic
     Vector3d TIC_TMP[NUM_OF_CAM];
     for (int i = 0; i < NUM_OF_CAM; i++)
+    {
         TIC_TMP[i].setZero();
+    }
     ric[0] = RIC[0];
     f_manager.setRic(ric);
     // 多约束三角化所有的特征点，注意，仍带是尺度模糊的
     f_manager.triangulate(Ps, &(TIC_TMP[0]), &(RIC[0]));
 
     double s = (x.tail<1>())(0);
+
     // 将滑窗中的预积分重新计算
     for (int i = 0; i <= WINDOW_SIZE; i++)
     {
@@ -506,8 +516,10 @@ bool Estimator::visualInitialAlign()
     }
     // 下面开始把所有的状态对齐到第0帧的imu坐标系
     for (int i = frame_count; i >= 0; i--)
+    {
         // twi - tw0 = toi,就是把所有的平移对齐到滑窗中的第0帧
         Ps[i] = s * Ps[i] - Rs[i] * TIC[0] - (s * Ps[0] - Rs[0] * TIC[0]);
+    }
     int                               kv = -1;
     map<double, ImageFrame>::iterator frame_i;
     // 把求解出来KF的速度赋给滑窗中
@@ -525,14 +537,22 @@ bool Estimator::visualInitialAlign()
     {
         it_per_id.used_num = it_per_id.feature_per_frame.size();
         if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+        {
             continue;
+        }
         it_per_id.estimated_depth *= s;
     }
     // 所有的P V Q全部对齐到第0帧的，同时和对齐到重力方向
-    Matrix3d R0  = Utility::g2R(g);                                   // g是枢纽帧下的重力方向，得到R_w_j
-    double   yaw = Utility::R2ypr(R0 * Rs[0]).x();                    // Rs[0]实际上是R_j_0
-    R0           = Utility::ypr2R(Eigen::Vector3d{-yaw, 0, 0}) * R0;  // 第一帧yaw赋0
-    g            = R0 * g;
+    // g是枢纽帧下的重力方向，得到R_w_j
+    Matrix3d R0 = Utility::g2R(g);
+    // Rs[0]实际上是R_j_0, R1 是R_w_0
+    Matrix3d R1  = R0 * Rs[0];
+    double   yaw = Utility::R2ypr(R1).x();
+    // Utility::ypr2R(Eigen::Vector3d{-yaw, 0, 0}) 是R_0_w,但是只有yaw轴的旋转是有效的
+    // 最终R0 是R_w_j，但是yaw轴旋转为R_0_j
+    R0 = Utility::ypr2R(Eigen::Vector3d{-yaw, 0, 0}) * R0;  // 第一帧yaw赋0
+    // 得到g在重力系下的坐标
+    g = R0 * g;
     // Matrix3d rot_diff = R0 * Rs[0].transpose();
     Matrix3d rot_diff = R0;
     for (int i = 0; i <= frame_count; i++)
@@ -541,8 +561,9 @@ bool Estimator::visualInitialAlign()
         Rs[i] = rot_diff * Rs[i];  // 全部对齐到重力下，同时yaw角对齐到第一帧
         Vs[i] = rot_diff * Vs[i];
     }
-    ROS_DEBUG_STREAM("g0     " << g.transpose());
-    ROS_DEBUG_STREAM("my R0  " << Utility::R2ypr(Rs[0]).transpose());
+
+    LOG(INFO) << "visualInitialAlign --- g0     " << g.transpose();
+    LOG(INFO) << "visualInitialAlign ---my R0  " << Utility::R2ypr(Rs[0]).transpose();
 
     return true;
 }
@@ -557,7 +578,6 @@ bool Estimator::visualInitialAlign()
  * @return true
  * @return false
  */
-
 bool Estimator::relativePose(Matrix3d& relative_R, Vector3d& relative_T, int& l)
 {
     // find previous frame which contians enough correspondance and parallex with newest frame
@@ -584,8 +604,8 @@ bool Estimator::relativePose(Matrix3d& relative_R, Vector3d& relative_T, int& l)
             if (average_parallax * 460 > 30 && m_estimator.solveRelativeRT(corres, relative_R, relative_T))
             {
                 l = i;
-                ROS_DEBUG("average_parallax %f choose l %d and newest frame to triangulate the whole structure",
-                          average_parallax * 460, l);
+                LOG(INFO) << "average_parallax " << average_parallax * 460 << "choose l " << l
+                          << " and newest frame to triangulate the whole structure";
                 return true;
             }
         }

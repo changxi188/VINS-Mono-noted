@@ -66,9 +66,12 @@ public:
         linearized_bg = _linearized_bg;
         jacobian.setIdentity();
         covariance.setZero();
+
         // 用之前存下来的imu值重新预积分
         for (int i = 0; i < static_cast<int>(dt_buf.size()); i++)
+        {
             propagate(dt_buf[i], acc_buf[i], gyr_buf[i]);
+        }
     }
 
     void midPointIntegration(double _dt, const Eigen::Vector3d& _acc_0, const Eigen::Vector3d& _gyr_0,

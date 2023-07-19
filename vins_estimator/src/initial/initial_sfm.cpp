@@ -13,7 +13,6 @@ GlobalSFM::GlobalSFM()
  * @param[in] point1
  * @param[out] point_3d 三角化结果
  */
-
 void GlobalSFM::triangulatePoint(Eigen::Matrix<double, 3, 4>& Pose0, Eigen::Matrix<double, 3, 4>& Pose1,
                                  Vector2d& point0, Vector2d& point1, Vector3d& point_3d)
 {
@@ -41,7 +40,6 @@ void GlobalSFM::triangulatePoint(Eigen::Matrix<double, 3, 4>& Pose0, Eigen::Matr
  * @return true
  * @return false
  */
-
 bool GlobalSFM::solveFrameByPnP(Matrix3d& R_initial, Vector3d& P_initial, int i, vector<SFMFeature>& sfm_f)
 {
     vector<cv::Point2f> pts_2_vector;
@@ -49,7 +47,9 @@ bool GlobalSFM::solveFrameByPnP(Matrix3d& R_initial, Vector3d& P_initial, int i,
     for (int j = 0; j < feature_num; j++)
     {
         if (sfm_f[j].state != true)  // 是false就是没有被三角化，pnp是3d到2d求解，因此需要3d点
+        {
             continue;
+        }
         Vector2d point2d;
         for (int k = 0; k < (int)sfm_f[j].observation.size(); k++)
         {
@@ -64,12 +64,16 @@ bool GlobalSFM::solveFrameByPnP(Matrix3d& R_initial, Vector3d& P_initial, int i,
             }
         }
     }
+
     if (int(pts_2_vector.size()) < 15)
     {
-        printf("unstable features tracking, please slowly move you device!\n");
+        LOG(WARNING) << "solveFrameByPnP --- unstable features tracking, please slowly move you device!\n";
         if (int(pts_2_vector.size()) < 10)
+        {
             return false;
+        }
     }
+
     cv::Mat r, rvec, t, D, tmp_r;
     cv::eigen2cv(R_initial, tmp_r);
     cv::Rodrigues(tmp_r, rvec);
@@ -108,7 +112,9 @@ void GlobalSFM::triangulateTwoFrames(int frame0, Eigen::Matrix<double, 3, 4>& Po
     for (int j = 0; j < feature_num; j++)  // feature_num是特征点总数
     {
         if (sfm_f[j].state == true)  // 已经三角化过了
+        {
             continue;
+        }
         bool     has_0 = false, has_1 = false;
         Vector2d point0;
         Vector2d point1;
@@ -126,6 +132,7 @@ void GlobalSFM::triangulateTwoFrames(int frame0, Eigen::Matrix<double, 3, 4>& Po
                 has_1  = true;
             }
         }
+
         if (has_0 && has_1)  // 如果都能被看到
         {
             Vector3d point_3d;
@@ -215,7 +222,9 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l, con
             Matrix3d R_initial = c_Rotation[i - 1];
             Vector3d P_initial = c_Translation[i - 1];
             if (!solveFrameByPnP(R_initial, P_initial, i, sfm_f))
+            {
                 return false;
+            }
             c_Rotation[i]             = R_initial;
             c_Translation[i]          = P_initial;
             c_Quat[i]                 = c_Rotation[i];
@@ -227,10 +236,14 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l, con
         // 当前帧和最后一帧进行三角化处理
         triangulateTwoFrames(i, Pose[i], frame_num - 1, Pose[frame_num - 1], sfm_f);
     }
+
     // Step 2 考虑有些特征点不能被最后一帧看到，因此，fix枢纽帧，遍历枢纽帧到最后一帧进行特征点三角化
     // 3: triangulate l-----l+1 l+2 ... frame_num -2
     for (int i = l + 1; i < frame_num - 1; i++)
+    {
         triangulateTwoFrames(l, Pose[l], i, Pose[i], sfm_f);
+    }
+
     // Step 3 处理完枢纽帧到最后一帧，开始处理枢纽帧之前的帧
     // 4: solve pnp l-1; triangulate l-1 ----- l
     //             l-2              l-2 ----- l
@@ -241,7 +254,9 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l, con
         Matrix3d R_initial = c_Rotation[i + 1];
         Vector3d P_initial = c_Translation[i + 1];
         if (!solveFrameByPnP(R_initial, P_initial, i, sfm_f))
+        {
             return false;
+        }
         c_Rotation[i]             = R_initial;
         c_Translation[i]          = P_initial;
         c_Quat[i]                 = c_Rotation[i];
@@ -250,12 +265,16 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l, con
         // triangulate
         triangulateTwoFrames(i, Pose[i], l, Pose[l], sfm_f);
     }
+
     // Step 4 得到了所有关键帧的位姿，遍历没有被三角化的特征点，进行三角化
     // 5: triangulate all other points
     for (int j = 0; j < feature_num; j++)
     {
         if (sfm_f[j].state == true)
+        {
             continue;
+        }
+
         if ((int)sfm_f[j].observation.size() >= 2)  // 只有被两个以上的KF观测到才可以三角化
         {
             Vector2d point0, point1;
@@ -322,8 +341,11 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l, con
     // 只有视觉重投影构成约束，因此遍历所有的特征点，构建约束
     for (int i = 0; i < feature_num; i++)
     {
-        if (sfm_f[i].state != true)  // 必须是三角化之后的
+        // 必须是三角化之后的
+        if (sfm_f[i].state != true)
+        {
             continue;
+        }
         // 遍历所有的观测帧，对这些帧建立约束
         for (int j = 0; j < int(sfm_f[i].observation.size()); j++)
         {
@@ -334,22 +356,24 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l, con
             problem.AddResidualBlock(cost_function, NULL, c_rotation[l], c_translation[l], sfm_f[i].position);
         }
     }
+
     ceres::Solver::Options options;
-    options.linear_solver_type = ceres::DENSE_SCHUR;
-    // options.minimizer_progress_to_stdout = true;
-    options.max_solver_time_in_seconds = 0.2;
+    options.linear_solver_type           = ceres::DENSE_SCHUR;
+    options.minimizer_progress_to_stdout = true;
+    options.max_solver_time_in_seconds   = 0.2;
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
     // std::cout << summary.BriefReport() << "\n";
     if (summary.termination_type == ceres::CONVERGENCE || summary.final_cost < 5e-03)
     {
-        // cout << "vision only BA converge" << endl;
+        LOG(INFO) << "construct --- vision only BA converge";
     }
     else
     {
-        // cout << "vision only BA not converge " << endl;
+        LOG(WARNING) << "construct --- vision only BA not converge.";
         return false;
     }
+
     // 优化结束，把double数组的值返回成对应类型的值
     // 同时Tcw -> Twc
     for (int i = 0; i < frame_num; i++)
@@ -369,8 +393,10 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l, con
     for (int i = 0; i < (int)sfm_f.size(); i++)
     {
         if (sfm_f[i].state)
+        {
             sfm_tracked_points[sfm_f[i].id] =
                 Vector3d(sfm_f[i].position[0], sfm_f[i].position[1], sfm_f[i].position[2]);
+        }
     }
     return true;
 }

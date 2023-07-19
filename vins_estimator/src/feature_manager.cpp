@@ -220,8 +220,12 @@ void FeatureManager::clearDepth(const VectorXd& x)
     for (auto& it_per_id : feature)
     {
         it_per_id.used_num = it_per_id.feature_per_frame.size();
+
         if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+        {
             continue;
+        }
+
         it_per_id.estimated_depth = 1.0 / x(++feature_index);
     }
 }
@@ -238,8 +242,11 @@ VectorXd FeatureManager::getDepthVector()
     for (auto& it_per_id : feature)
     {
         it_per_id.used_num = it_per_id.feature_per_frame.size();
+
         if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+        {
             continue;
+        }
 #if 1
         dep_vec(++feature_index) = 1. / it_per_id.estimated_depth;
 #else
@@ -263,10 +270,14 @@ void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[])
     {
         it_per_id.used_num = it_per_id.feature_per_frame.size();
         if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+        {
             continue;
+        }
 
         if (it_per_id.estimated_depth > 0)  // 代表已经三角化过了
+        {
             continue;
+        }
         int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
 
         ROS_ASSERT(NUM_OF_CAM == 1);
@@ -321,11 +332,9 @@ void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[])
 void FeatureManager::removeOutlier()
 {
     ROS_BREAK();
-    int i = -1;
     for (auto it = feature.begin(), it_next = feature.begin(); it != feature.end(); it = it_next)
     {
         it_next++;
-        i += it->used_num != 0;
         if (it->used_num != 0 && it->is_outlier == true)
         {
             feature.erase(it);
