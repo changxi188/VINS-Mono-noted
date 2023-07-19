@@ -297,7 +297,7 @@ void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[])
             // 得到该KF的相机坐标系位姿
             Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[0];
             Eigen::Matrix3d R1 = Rs[imu_j] * ric[0];
-            // T_w_cj -> T_c0_cj
+            // T_w_cj -> T_c0_cj, T_w_cj中的w其实就是枢纽帧
             Eigen::Vector3d             t = R0.transpose() * (t1 - t0);
             Eigen::Matrix3d             R = R0.transpose() * R1;
             Eigen::Matrix<double, 3, 4> P;
@@ -310,7 +310,9 @@ void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[])
             svd_A.row(svd_idx++) = f[1] * P.row(2) - f[2] * P.row(1);
 
             if (imu_i == imu_j)
+            {
                 continue;
+            }
         }
         ROS_ASSERT(svd_idx == svd_A.rows());
         Eigen::Vector4d svd_V = Eigen::JacobiSVD<Eigen::MatrixXd>(svd_A, Eigen::ComputeThinV).matrixV().rightCols<1>();
@@ -375,7 +377,7 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
                 Eigen::Vector3d pts_i   = uv_i * it->estimated_depth;           // 实际相机坐标系下的坐标
                 Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P;              // 转到世界坐标系下
                 Eigen::Vector3d pts_j = new_R.transpose() * (w_pts_i - new_P);  // 转到新的最老帧的相机坐标系下
-                double          dep_j = pts_j(2);
+                double dep_j = pts_j(2);
                 if (dep_j > 0)  // 看看深度是否有效
                 {
                     it->estimated_depth = dep_j;  // 有效的话就得到在现在最老帧下的深度值

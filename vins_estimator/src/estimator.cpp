@@ -505,6 +505,7 @@ bool Estimator::visualInitialAlign()
     ric[0] = RIC[0];
     f_manager.setRic(ric);
     // 多约束三角化所有的特征点，注意，仍带是尺度模糊的
+    // 得到每个点在第一次观测帧中的深度值
     f_manager.triangulate(Ps, &(TIC_TMP[0]), &(RIC[0]));
 
     double s = (x.tail<1>())(0);
@@ -517,7 +518,12 @@ bool Estimator::visualInitialAlign()
     // 下面开始把所有的状态对齐到第0帧的imu坐标系
     for (int i = frame_count; i >= 0; i--)
     {
-        // twi - tw0 = toi,就是把所有的平移对齐到滑窗中的第0帧
+        // 注意这一块的w都是指的枢纽帧
+        // twi - tw0 = t0i,就是把所有的平移对齐到滑窗中的第0帧
+        // twi = s * Ps[i] - Rs[i] * TIC[0]
+        // tw0 = s * Ps[0] - Rs[0] * TIC[0]
+        // twi或者tw0 都是对应 T_wc * T_ic^{-1} = T_wi 中的平移部分
+        // 注意这里的t0i还都是在枢纽帧坐标系下表示的，所以后面还需要再转到重力系
         Ps[i] = s * Ps[i] - Rs[i] * TIC[0] - (s * Ps[0] - Rs[0] * TIC[0]);
     }
     int                               kv = -1;
