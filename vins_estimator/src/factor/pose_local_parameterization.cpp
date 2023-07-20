@@ -12,11 +12,13 @@ bool PoseLocalParameterization::Plus(const double* x, const double* delta, doubl
     Eigen::Map<Eigen::Vector3d>    p(x_plus_delta);
     Eigen::Map<Eigen::Quaterniond> q(x_plus_delta + 3);
 
+    // 为什么关于p的delta是直接加的？？？
     p = _p + dp;
     q = (_q * dq).normalized();
 
     return true;
 }
+
 bool PoseLocalParameterization::ComputeJacobian(const double* x, double* jacobian) const
 {
     Eigen::Map<Eigen::Matrix<double, 7, 6, Eigen::RowMajor>> j(jacobian);

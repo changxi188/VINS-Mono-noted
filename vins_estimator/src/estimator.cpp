@@ -255,12 +255,12 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
         // 检测VIO是否正常
         if (failureDetection())
         {
-            ROS_WARN("failure detection!");
+            LOG(ERROR) << "processImage --- failure detection!";
             failure_occur = 1;
             // 如果异常，重启VIO
             clearState();
             setParameter();
-            ROS_WARN("system reboot!");
+            LOG(ERROR) << "processImage --- system reboot!";
             return;
         }
 
@@ -680,13 +680,19 @@ void Estimator::vector2double()
         para_Ex_Pose[i][5] = q.z();
         para_Ex_Pose[i][6] = q.w();
     }
+
     // 特征点逆深度
     VectorXd dep = f_manager.getDepthVector();
     for (int i = 0; i < f_manager.getFeatureCount(); i++)
+    {
         para_Feature[i][0] = dep(i);
+    }
+
     // 传感器时间同步
     if (ESTIMATE_TD)
+    {
         para_Td[0][0] = td;
+    }
 }
 
 /**
@@ -715,12 +721,13 @@ void Estimator::double2vector()
     // 接近万象节死锁的问题 https://blog.csdn.net/AndrewFan/article/details/60981437
     if (abs(abs(origin_R0.y()) - 90) < 1.0 || abs(abs(origin_R00.y()) - 90) < 1.0)
     {
-        ROS_DEBUG("euler singular point!");
+        LOG(INFO) << "double2vector --- euler singular point!";
         rot_diff = Rs[0] * Quaterniond(para_Pose[0][6], para_Pose[0][3], para_Pose[0][4], para_Pose[0][5])
                                .toRotationMatrix()
                                .transpose();
     }
 
+    // T_diff 是滑窗第一帧世界系到优化前第一帧世界系的变换矩阵
     for (int i = 0; i <= WINDOW_SIZE; i++)
     {
         // 保持第1帧的yaw不变
@@ -748,10 +755,15 @@ void Estimator::double2vector()
     // 重新设置各个特征点的逆深度
     VectorXd dep = f_manager.getDepthVector();
     for (int i = 0; i < f_manager.getFeatureCount(); i++)
+    {
         dep(i) = para_Feature[i][0];
+    }
+
     f_manager.setDepth(dep);
     if (ESTIMATE_TD)
+    {
         td = para_Td[0][0];
+    }
 
     // relative info between two loop frame
     if (relocalization_info)  // 类似进行一个调整
@@ -783,17 +795,17 @@ bool Estimator::failureDetection()
 {
     if (f_manager.last_track_num < 2)  // 地图点数目是否足够
     {
-        ROS_INFO(" little feature %d", f_manager.last_track_num);
+        LOG(WARNING) << "failureDetection --- little feature %d", f_manager.last_track_num;
         // return true;
     }
     if (Bas[WINDOW_SIZE].norm() > 2.5)  // 零偏是否正常
     {
-        ROS_INFO(" big IMU acc bias estimation %f", Bas[WINDOW_SIZE].norm());
+        LOG(ERROR) << "failureDetection --- big IMU acc bias estimation %f", Bas[WINDOW_SIZE].norm();
         return true;
     }
     if (Bgs[WINDOW_SIZE].norm() > 1.0)
     {
-        ROS_INFO(" big IMU gyr bias estimation %f", Bgs[WINDOW_SIZE].norm());
+        LOG(ERROR) << "failureDetection --- big IMU gyr bias estimation %f", Bgs[WINDOW_SIZE].norm();
         return true;
     }
     /*
@@ -806,12 +818,12 @@ bool Estimator::failureDetection()
     Vector3d tmp_P = Ps[WINDOW_SIZE];
     if ((tmp_P - last_P).norm() > 5)  // 两帧之间运动是否过大
     {
-        ROS_INFO(" big translation");
+        LOG(ERROR) << "failureDetection --- big translation";
         return true;
     }
     if (abs(tmp_P.z() - last_P.z()) > 1)  // 重力方向运动是否过大
     {
-        ROS_INFO(" big z translation");
+        LOG(ERROR) << "failureDetection --- big z translation";
         return true;
     }
     Matrix3d    tmp_R   = Rs[WINDOW_SIZE];
@@ -821,7 +833,7 @@ bool Estimator::failureDetection()
     delta_angle = acos(delta_Q.w()) * 2.0 / 3.14 * 180.0;
     if (delta_angle > 50)  // 两帧姿态变化是否过大
     {
-        ROS_INFO(" big delta_angle ");
+        LOG(ERROR) << "failureDetection --- big delta_angle ";
         // return true;
     }
     return false;
@@ -838,6 +850,7 @@ void Estimator::optimization()
     ceres::LossFunction* loss_function;
     // loss_function = new ceres::HuberLoss(1.0);
     loss_function = new ceres::CauchyLoss(1.0);
+
     // Step 1 定义待优化的参数块，类似g2o的顶点
     // 参数块 1： 滑窗中位姿包括位置和姿态，共11帧
     for (int i = 0; i < WINDOW_SIZE + 1; i++)
@@ -954,7 +967,7 @@ void Estimator::optimization()
         }
     }
 
-    LOG(INFO) << "optimization --- visual measurement count: " << f_m_cnt;
+    LOG(INFO) << "optimization --- landmark number: " << feature_index << ", visual measurement count: " << f_m_cnt;
     LOG(INFO) << "optimization --- prepare for ceres: " << t_prepare.toc();
 
     // 回环检测相关的约束
@@ -1004,10 +1017,10 @@ void Estimator::optimization()
 
     options.linear_solver_type = ceres::DENSE_SCHUR;
     // options.num_threads = 2;
-    options.trust_region_strategy_type = ceres::DOGLEG;
-    options.max_num_iterations         = NUM_ITERATIONS;
+    options.trust_region_strategy_type   = ceres::DOGLEG;
+    options.max_num_iterations           = NUM_ITERATIONS;
+    options.minimizer_progress_to_stdout = true;
     // options.use_explicit_schur_complement = true;
-    // options.minimizer_progress_to_stdout = true;
     // options.use_nonmonotonic_steps = true;
     if (marginalization_flag == MARGIN_OLD)
     {
@@ -1021,11 +1034,12 @@ void Estimator::optimization()
     TicToc                 t_solver;
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);  // ceres优化求解
-    // cout << summary.BriefReport() << endl;
+    LOG(INFO) << "optimization --- " << summary.BriefReport();
     LOG(INFO) << "optimization --- Iterations : " << static_cast<int>(summary.iterations.size());
     LOG(INFO) << "optimization --- solver costs: " << t_solver.toc();
     // 把优化后double -> eigen
     double2vector();
+
     // Step 4 边缘化
     // 科普一下舒尔补
     TicToc t_whole_marginalization;
@@ -1035,6 +1049,7 @@ void Estimator::optimization()
         MarginalizationInfo* marginalization_info = new MarginalizationInfo();
         // 这里类似手写高斯牛顿，因此也需要都转成double数组
         vector2double();
+
         // 关于边缘化有几点注意的地方
         // 1、找到需要边缘化的参数块，这里是地图点，第0帧位姿，第0帧速度零偏
         // 2、找到构造高斯牛顿下降时跟这些待边缘化相关的参数块有关的残差约束，那就是预积分约束，重投影约束，以及上一次边缘化约束
@@ -1050,7 +1065,9 @@ void Estimator::optimization()
                 // 涉及到的待边缘化的上一次边缘化留下来的当前参数块只有位姿和速度零偏
                 if (last_marginalization_parameter_blocks[i] == para_Pose[0] ||
                     last_marginalization_parameter_blocks[i] == para_SpeedBias[0])
+                {
                     drop_set.push_back(i);
+                }
             }
             // 处理方式和其他残差块相同
             // construct new marginlization_factor
@@ -1079,14 +1096,18 @@ void Estimator::optimization()
             {
                 it_per_id.used_num = it_per_id.feature_per_frame.size();
                 if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+                {
                     continue;
+                }
 
                 ++feature_index;
 
                 int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
                 // 只找能被第0帧看到的特征点
                 if (imu_i != 0)
+                {
                     continue;
+                }
 
                 Vector3d pts_i = it_per_id.feature_per_frame[0].point;
                 // 遍历看到这个特征点的所有KF，通过这个特征点，建立和第0帧的约束
@@ -1094,7 +1115,9 @@ void Estimator::optimization()
                 {
                     imu_j++;
                     if (imu_i == imu_j)
+                    {
                         continue;
+                    }
 
                     Vector3d pts_j = it_per_frame.point;
                     // 根据是否约束延时确定残差阵
@@ -1133,7 +1156,7 @@ void Estimator::optimization()
         TicToc t_margin;
         // 边缘化操作
         marginalization_info->marginalize();
-        ROS_DEBUG("marginalization %f ms", t_margin.toc());
+        LOG(INFO) << "optimization --- marginalization " << t_margin.toc() << " ms";
         // 即将滑窗，因此记录新地址对应的老地址
         std::unordered_map<long, double*> addr_shift;
         for (int i = 1; i <= WINDOW_SIZE; i++)
@@ -1162,75 +1185,86 @@ void Estimator::optimization()
     {
         // 要求有上一次边缘化的结果同时，即将被margin掉的在上一次边缘化后的约束中
         // 预积分结果合并，因此只有位姿margin掉
-        if (last_marginalization_info &&
-            std::count(std::begin(last_marginalization_parameter_blocks),
-                       std::end(last_marginalization_parameter_blocks), para_Pose[WINDOW_SIZE - 1]))
+        if (!last_marginalization_info)
         {
-            MarginalizationInfo* marginalization_info = new MarginalizationInfo();
-            vector2double();
-            if (last_marginalization_info)
-            {
-                vector<int> drop_set;
-                for (int i = 0; i < static_cast<int>(last_marginalization_parameter_blocks.size()); i++)
-                {
-                    // 速度零偏只会margin第1个，不可能出现倒数第二个
-                    ROS_ASSERT(last_marginalization_parameter_blocks[i] != para_SpeedBias[WINDOW_SIZE - 1]);
-                    // 这种case只会margin掉倒数第二个位姿
-                    if (last_marginalization_parameter_blocks[i] == para_Pose[WINDOW_SIZE - 1])
-                        drop_set.push_back(i);
-                }
-                // construct new marginlization_factor
-                // 这里只会更新一下margin factor
-                MarginalizationFactor* marginalization_factor = new MarginalizationFactor(last_marginalization_info);
-                ResidualBlockInfo*     residual_block_info    = new ResidualBlockInfo(
-                    marginalization_factor, NULL, last_marginalization_parameter_blocks, drop_set);
-
-                marginalization_info->addResidualBlockInfo(residual_block_info);
-            }
-            // 这里的操作如出一辙
-            TicToc t_pre_margin;
-            ROS_DEBUG("begin marginalization");
-            marginalization_info->preMarginalize();
-            ROS_DEBUG("end pre marginalization, %f ms", t_pre_margin.toc());
-
-            TicToc t_margin;
-            ROS_DEBUG("begin marginalization");
-            marginalization_info->marginalize();
-            ROS_DEBUG("end marginalization, %f ms", t_margin.toc());
-
-            std::unordered_map<long, double*> addr_shift;
-            for (int i = 0; i <= WINDOW_SIZE; i++)
-            {
-                if (i == WINDOW_SIZE - 1)
-                    continue;
-                else if (i == WINDOW_SIZE)  // 滑窗，最新帧成为次新帧
-                {
-                    addr_shift[reinterpret_cast<long>(para_Pose[i])]      = para_Pose[i - 1];
-                    addr_shift[reinterpret_cast<long>(para_SpeedBias[i])] = para_SpeedBias[i - 1];
-                }
-                else  // 其他不变
-                {
-                    addr_shift[reinterpret_cast<long>(para_Pose[i])]      = para_Pose[i];
-                    addr_shift[reinterpret_cast<long>(para_SpeedBias[i])] = para_SpeedBias[i];
-                }
-            }
-            for (int i = 0; i < NUM_OF_CAM; i++)
-                addr_shift[reinterpret_cast<long>(para_Ex_Pose[i])] = para_Ex_Pose[i];
-            if (ESTIMATE_TD)
-            {
-                addr_shift[reinterpret_cast<long>(para_Td[0])] = para_Td[0];
-            }
-
-            vector<double*> parameter_blocks = marginalization_info->getParameterBlocks(addr_shift);
-            if (last_marginalization_info)
-                delete last_marginalization_info;
-            last_marginalization_info             = marginalization_info;
-            last_marginalization_parameter_blocks = parameter_blocks;
+            LOG(WARNING) << "optimization --- margin second new, but don't have last marginalization info.";
+            return;
         }
-    }
-    ROS_DEBUG("whole marginalization costs: %f", t_whole_marginalization.toc());
 
-    ROS_DEBUG("whole time for ceres: %f", t_whole.toc());
+        if (!std::count(std::begin(last_marginalization_parameter_blocks),
+                        std::end(last_marginalization_parameter_blocks), para_Pose[WINDOW_SIZE - 1]))
+        {
+            LOG(WARNING) << "optimization --- margin second new, but last marginalization parameter blocks don't have "
+                            "second new pose.";
+            return;
+        }
+
+        MarginalizationInfo* marginalization_info = new MarginalizationInfo();
+        vector2double();
+        if (last_marginalization_info)
+        {
+            vector<int> drop_set;
+            for (int i = 0; i < static_cast<int>(last_marginalization_parameter_blocks.size()); i++)
+            {
+                // 速度零偏只会margin第1个，不可能出现倒数第二个
+                ROS_ASSERT(last_marginalization_parameter_blocks[i] != para_SpeedBias[WINDOW_SIZE - 1]);
+                // 这种case只会margin掉倒数第二个位姿
+                if (last_marginalization_parameter_blocks[i] == para_Pose[WINDOW_SIZE - 1])
+                    drop_set.push_back(i);
+            }
+            // construct new marginlization_factor
+            // 这里只会更新一下margin factor
+            MarginalizationFactor* marginalization_factor = new MarginalizationFactor(last_marginalization_info);
+            ResidualBlockInfo*     residual_block_info =
+                new ResidualBlockInfo(marginalization_factor, NULL, last_marginalization_parameter_blocks, drop_set);
+
+            marginalization_info->addResidualBlockInfo(residual_block_info);
+        }
+        // 这里的操作如出一辙
+        TicToc t_pre_margin;
+        LOG(INFO) << "optimization --- begin marginalization";
+        marginalization_info->preMarginalize();
+        LOG(INFO) << "optimization --- end pre marginalization" << t_pre_margin.toc() << " ms";
+
+        TicToc t_margin;
+        LOG(INFO) << "optimization --- begin marginalization";
+        marginalization_info->marginalize();
+        LOG(INFO) << "optimization --- end marginalization, %f ms", t_margin.toc();
+
+        std::unordered_map<long, double*> addr_shift;
+        for (int i = 0; i <= WINDOW_SIZE; i++)
+        {
+            if (i == WINDOW_SIZE - 1)
+                continue;
+            else if (i == WINDOW_SIZE)  // 滑窗，最新帧成为次新帧
+            {
+                addr_shift[reinterpret_cast<long>(para_Pose[i])]      = para_Pose[i - 1];
+                addr_shift[reinterpret_cast<long>(para_SpeedBias[i])] = para_SpeedBias[i - 1];
+            }
+            else  // 其他不变
+            {
+                addr_shift[reinterpret_cast<long>(para_Pose[i])]      = para_Pose[i];
+                addr_shift[reinterpret_cast<long>(para_SpeedBias[i])] = para_SpeedBias[i];
+            }
+        }
+        for (int i = 0; i < NUM_OF_CAM; i++)
+        {
+            addr_shift[reinterpret_cast<long>(para_Ex_Pose[i])] = para_Ex_Pose[i];
+        }
+        if (ESTIMATE_TD)
+        {
+            addr_shift[reinterpret_cast<long>(para_Td[0])] = para_Td[0];
+        }
+
+        vector<double*> parameter_blocks = marginalization_info->getParameterBlocks(addr_shift);
+        if (last_marginalization_info)
+            delete last_marginalization_info;
+        last_marginalization_info             = marginalization_info;
+        last_marginalization_parameter_blocks = parameter_blocks;
+    }
+
+    LOG(INFO) << "optimization --- whole marginalization costs: " << t_whole_marginalization.toc();
+    LOG(INFO) << "optimization --- whole time for ceres: " << t_whole.toc();
 }
 
 // 滑动窗口

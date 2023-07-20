@@ -61,11 +61,11 @@ public:
     void                 marginalize();
     std::vector<double*> getParameterBlocks(std::unordered_map<long, double*>& addr_shift);
 
-    std::vector<ResidualBlockInfo*> factors;
-    int                             m, n;
-    std::unordered_map<long, int> parameter_block_size;  // global size   // 地址->global size
-    int                           sum_block_size;
-    std::unordered_map<long, int> parameter_block_idx;       // local size // 地址->参数排列的顺序idx
+    std::vector<ResidualBlockInfo*>   factors;
+    int                               m, n;
+    std::unordered_map<long, int>     parameter_block_size;  // global size   // 地址->global size
+    int                               sum_block_size;
+    std::unordered_map<long, int>     parameter_block_idx;   // local size // 地址->参数排列的顺序idx
     std::unordered_map<long, double*> parameter_block_data;  // 地址->参数块实际内容的地址
 
     std::vector<int>     keep_block_size;  // global size

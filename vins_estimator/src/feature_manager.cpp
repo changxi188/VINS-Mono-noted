@@ -191,7 +191,9 @@ void FeatureManager::setDepth(const VectorXd& x)
             it_per_id.solve_flag = 2;
         }
         else
+        {
             it_per_id.solve_flag = 1;
+        }
     }
 }
 
@@ -314,6 +316,7 @@ void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[])
                 continue;
             }
         }
+
         ROS_ASSERT(svd_idx == svd_A.rows());
         Eigen::Vector4d svd_V = Eigen::JacobiSVD<Eigen::MatrixXd>(svd_A, Eigen::ComputeThinV).matrixV().rightCols<1>();
         // 求解齐次坐标下的深度
@@ -377,7 +380,7 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
                 Eigen::Vector3d pts_i   = uv_i * it->estimated_depth;           // 实际相机坐标系下的坐标
                 Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P;              // 转到世界坐标系下
                 Eigen::Vector3d pts_j = new_R.transpose() * (w_pts_i - new_P);  // 转到新的最老帧的相机坐标系下
-                double dep_j = pts_j(2);
+                double          dep_j = pts_j(2);
                 if (dep_j > 0)  // 看看深度是否有效
                 {
                     it->estimated_depth = dep_j;  // 有效的话就得到在现在最老帧下的深度值
