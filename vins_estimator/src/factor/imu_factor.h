@@ -92,7 +92,7 @@ public:
 
             if (pre_integration->jacobian.maxCoeff() > 1e8 || pre_integration->jacobian.minCoeff() < -1e8)
             {
-                ROS_WARN("numerical unstable in preintegration");
+                LOG(WARNING) << "IMUFactor --- numerical unstable in preintegration";
                 // std::cout << pre_integration->jacobian << std::endl;
                 ///                ROS_BREAK();
             }
@@ -121,7 +121,7 @@ public:
 
                 if (jacobian_pose_i.maxCoeff() > 1e8 || jacobian_pose_i.minCoeff() < -1e8)
                 {
-                    ROS_WARN("numerical unstable in preintegration");
+                    LOG(WARNING) << "IMUFactor --- numerical unstable in preintegration";
                     // std::cout << sqrt_info << std::endl;
                     // ROS_BREAK();
                 }

@@ -75,15 +75,15 @@ void printStatistics(const Estimator& estimator, double t)
 {
     if (estimator.solver_flag != Estimator::SolverFlag::NON_LINEAR)
         return;
-    LOG(INFO) << "position: " << estimator.Ps[WINDOW_SIZE].x() << ", " << estimator.Ps[WINDOW_SIZE].y() << ", "
-              << estimator.Ps[WINDOW_SIZE].z() << "\r";
-    ROS_DEBUG_STREAM("position: " << estimator.Ps[WINDOW_SIZE].transpose());
-    ROS_DEBUG_STREAM("orientation: " << estimator.Vs[WINDOW_SIZE].transpose());
+    LOG(INFO) << "printStatistics --- position: " << estimator.Ps[WINDOW_SIZE].x() << ", "
+              << estimator.Ps[WINDOW_SIZE].y() << ", " << estimator.Ps[WINDOW_SIZE].z() << "\r";
+    LOG(INFO) << "printStatistics --- position: " << estimator.Ps[WINDOW_SIZE].transpose();
+    LOG(INFO) << "printStatistics --- orientation: " << estimator.Vs[WINDOW_SIZE].transpose();
     for (int i = 0; i < NUM_OF_CAM; i++)
     {
-        // ROS_DEBUG("calibration result for camera %d", i);
-        ROS_DEBUG_STREAM("extirnsic tic: " << estimator.tic[i].transpose());
-        ROS_DEBUG_STREAM("extrinsic ric: " << Utility::R2ypr(estimator.ric[i]).transpose());
+        LOG(INFO) << "printStatistics --- calibration result for camera " << i;
+        LOG(INFO) << "printStatistics --- extirnsic tic: " << estimator.tic[i].transpose();
+        LOG(INFO) << "printStatistics --- extrinsic ric: " << Utility::R2ypr(estimator.ric[i]).transpose();
         if (ESTIMATE_EXTRINSIC)
         {
             cv::FileStorage fs(EX_CALIB_RESULT_PATH, cv::FileStorage::WRITE);
@@ -103,14 +103,16 @@ void printStatistics(const Estimator& estimator, double t)
     static int    sum_of_calculation = 0;
     sum_of_time += t;
     sum_of_calculation++;
-    ROS_DEBUG("vo solver costs: %f ms", t);
-    ROS_DEBUG("average of time %f ms", sum_of_time / sum_of_calculation);
+    LOG(INFO) << "printStatistics --- vo solver costs: " << t << " ms";
+    LOG(INFO) << "printStatistics --- average of time " << sum_of_time / sum_of_calculation << " ms";
 
     sum_of_path += (estimator.Ps[WINDOW_SIZE] - last_path).norm();
     last_path = estimator.Ps[WINDOW_SIZE];
-    ROS_DEBUG("sum of path %f", sum_of_path);
+    LOG(INFO) << "printStatistics --- sum of path " << sum_of_path;
     if (ESTIMATE_TD)
-        ROS_INFO("td %f", estimator.td);
+    {
+        LOG(INFO) << "printStatistics --- td " << estimator.td;
+    }
 }
 
 void pubOdometry(const Estimator& estimator, const std_msgs::Header& header)

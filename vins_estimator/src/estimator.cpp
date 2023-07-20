@@ -68,9 +68,14 @@ void Estimator::clearState()
     td = TD;
 
     if (tmp_pre_integration != nullptr)
+    {
         delete tmp_pre_integration;
+    }
+
     if (last_marginalization_info != nullptr)
+    {
         delete last_marginalization_info;
+    }
 
     tmp_pre_integration       = nullptr;
     last_marginalization_info = nullptr;
@@ -795,17 +800,17 @@ bool Estimator::failureDetection()
 {
     if (f_manager.last_track_num < 2)  // 地图点数目是否足够
     {
-        LOG(WARNING) << "failureDetection --- little feature %d", f_manager.last_track_num;
+        LOG(WARNING) << "failureDetection --- little feature " << f_manager.last_track_num;
         // return true;
     }
     if (Bas[WINDOW_SIZE].norm() > 2.5)  // 零偏是否正常
     {
-        LOG(ERROR) << "failureDetection --- big IMU acc bias estimation %f", Bas[WINDOW_SIZE].norm();
+        LOG(ERROR) << "failureDetection --- big IMU acc bias estimation " << Bas[WINDOW_SIZE].norm();
         return true;
     }
     if (Bgs[WINDOW_SIZE].norm() > 1.0)
     {
-        LOG(ERROR) << "failureDetection --- big IMU gyr bias estimation %f", Bgs[WINDOW_SIZE].norm();
+        LOG(ERROR) << "failureDetection --- big IMU gyr bias estimation " << Bgs[WINDOW_SIZE].norm();
         return true;
     }
     /*
@@ -1165,9 +1170,13 @@ void Estimator::optimization()
             addr_shift[reinterpret_cast<long>(para_Pose[i])]      = para_Pose[i - 1];
             addr_shift[reinterpret_cast<long>(para_SpeedBias[i])] = para_SpeedBias[i - 1];
         }
+
         // 外参和时间延时不变
         for (int i = 0; i < NUM_OF_CAM; i++)
+        {
             addr_shift[reinterpret_cast<long>(para_Ex_Pose[i])] = para_Ex_Pose[i];
+        }
+
         if (ESTIMATE_TD)
         {
             addr_shift[reinterpret_cast<long>(para_Td[0])] = para_Td[0];
@@ -1176,10 +1185,12 @@ void Estimator::optimization()
         vector<double*> parameter_blocks = marginalization_info->getParameterBlocks(addr_shift);
 
         if (last_marginalization_info)
+        {
             delete last_marginalization_info;
+        }
         last_marginalization_info = marginalization_info;  // 本次边缘化的所有信息
-        last_marginalization_parameter_blocks =
-            parameter_blocks;  // 代表该次边缘化对某些参数块形成约束，这些参数块在滑窗之后的地址
+        // 代表该次边缘化对某些参数块形成约束，这些参数块在滑窗之后的地址
+        last_marginalization_parameter_blocks = parameter_blocks;
     }
     else  // 边缘化倒数第二帧
     {

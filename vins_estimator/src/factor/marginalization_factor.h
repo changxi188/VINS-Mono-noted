@@ -1,11 +1,12 @@
 #pragma once
 
-#include <ceres/ceres.h>
 #include <pthread.h>
-#include <ros/console.h>
-#include <ros/ros.h>
 #include <cstdlib>
 #include <unordered_map>
+
+#include <ceres/ceres.h>
+#include <ros/console.h>
+#include <ros/ros.h>
 
 #include "../utility/tic_toc.h"
 #include "../utility/utility.h"
@@ -24,6 +25,7 @@ struct ResidualBlockInfo
     {
     }
 
+    // 待边缘化的各个残差块计算残差和雅克比矩阵，同时处理核函数的case
     void Evaluate();
 
     ceres::CostFunction* cost_function;
@@ -63,10 +65,10 @@ public:
 
     std::vector<ResidualBlockInfo*>   factors;
     int                               m, n;
-    std::unordered_map<long, int>     parameter_block_size;  // global size   // 地址->global size
     int                               sum_block_size;
+    std::unordered_map<long, int>     parameter_block_size;  // global size   // 地址->global size
     std::unordered_map<long, int>     parameter_block_idx;   // local size // 地址->参数排列的顺序idx
-    std::unordered_map<long, double*> parameter_block_data;  // 地址->参数块实际内容的地址
+    std::unordered_map<long, double*> parameter_block_data;  // 参数块地址->参数块备份数据的地址
 
     std::vector<int>     keep_block_size;  // global size
     std::vector<int>     keep_block_idx;   // local size
