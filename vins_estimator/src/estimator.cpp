@@ -1221,7 +1221,9 @@ void Estimator::optimization()
                 ROS_ASSERT(last_marginalization_parameter_blocks[i] != para_SpeedBias[WINDOW_SIZE - 1]);
                 // 这种case只会margin掉倒数第二个位姿
                 if (last_marginalization_parameter_blocks[i] == para_Pose[WINDOW_SIZE - 1])
+                {
                     drop_set.push_back(i);
+                }
             }
             // construct new marginlization_factor
             // 这里只会更新一下margin factor
@@ -1246,7 +1248,9 @@ void Estimator::optimization()
         for (int i = 0; i <= WINDOW_SIZE; i++)
         {
             if (i == WINDOW_SIZE - 1)
+            {
                 continue;
+            }
             else if (i == WINDOW_SIZE)  // 滑窗，最新帧成为次新帧
             {
                 addr_shift[reinterpret_cast<long>(para_Pose[i])]      = para_Pose[i - 1];
@@ -1269,7 +1273,9 @@ void Estimator::optimization()
 
         vector<double*> parameter_blocks = marginalization_info->getParameterBlocks(addr_shift);
         if (last_marginalization_info)
+        {
             delete last_marginalization_info;
+        }
         last_marginalization_info             = marginalization_info;
         last_marginalization_parameter_blocks = parameter_blocks;
     }

@@ -437,8 +437,11 @@ bool MarginalizationFactor::Evaluate(double const* const* parameters, double* re
         Eigen::VectorXd x0 =
             Eigen::Map<const Eigen::VectorXd>(marginalization_info->keep_block_data[i], size);  // 当时参数块的值
         if (size != 7)
-            dx.segment(idx, size) = x - x0;  // 不需要local param的直接做差
-        else                                 // 代表位姿的param
+        {
+            // 不需要local param的直接做差
+            dx.segment(idx, size) = x - x0;
+        }
+        else  // 代表位姿的param
         {
             dx.segment<3>(idx + 0) = x.head<3>() - x0.head<3>();  // 位移直接做差
             // 旋转就是李代数做差

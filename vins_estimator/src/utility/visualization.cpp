@@ -74,11 +74,16 @@ void pubLatestOdometry(const Eigen::Vector3d& P, const Eigen::Quaterniond& Q, co
 void printStatistics(const Estimator& estimator, double t)
 {
     if (estimator.solver_flag != Estimator::SolverFlag::NON_LINEAR)
+    {
         return;
-    LOG(INFO) << "printStatistics --- position: " << estimator.Ps[WINDOW_SIZE].x() << ", "
-              << estimator.Ps[WINDOW_SIZE].y() << ", " << estimator.Ps[WINDOW_SIZE].z() << "\r";
+    }
+
     LOG(INFO) << "printStatistics --- position: " << estimator.Ps[WINDOW_SIZE].transpose();
-    LOG(INFO) << "printStatistics --- orientation: " << estimator.Vs[WINDOW_SIZE].transpose();
+    LOG(INFO) << "printStatistics --- orientation: " << Utility::R2ypr(estimator.Rs[WINDOW_SIZE]).transpose();
+    LOG(INFO) << "printStatistics --- velocity:" << estimator.Vs[WINDOW_SIZE].transpose();
+    LOG(INFO) << "printStatistics --- Ba:" << estimator.Bas[WINDOW_SIZE].transpose();
+    LOG(INFO) << "printStatistics --- Bg:" << estimator.Bgs[WINDOW_SIZE].transpose();
+
     for (int i = 0; i < NUM_OF_CAM; i++)
     {
         LOG(INFO) << "printStatistics --- calibration result for camera " << i;
@@ -103,7 +108,7 @@ void printStatistics(const Estimator& estimator, double t)
     static int    sum_of_calculation = 0;
     sum_of_time += t;
     sum_of_calculation++;
-    LOG(INFO) << "printStatistics --- vo solver costs: " << t << " ms";
+    LOG(INFO) << "printStatistics --- vio solver costs: " << t << " ms";
     LOG(INFO) << "printStatistics --- average of time " << sum_of_time / sum_of_calculation << " ms";
 
     sum_of_path += (estimator.Ps[WINDOW_SIZE] - last_path).norm();
@@ -117,72 +122,76 @@ void printStatistics(const Estimator& estimator, double t)
 
 void pubOdometry(const Estimator& estimator, const std_msgs::Header& header)
 {
-    if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)
+    if (estimator.solver_flag != Estimator::SolverFlag::NON_LINEAR)
     {
-        nav_msgs::Odometry odometry;
-        odometry.header          = header;
-        odometry.header.frame_id = "world";
-        odometry.child_frame_id  = "world";
-        Quaterniond tmp_Q;
-        tmp_Q                            = Quaterniond(estimator.Rs[WINDOW_SIZE]);
-        odometry.pose.pose.position.x    = estimator.Ps[WINDOW_SIZE].x();
-        odometry.pose.pose.position.y    = estimator.Ps[WINDOW_SIZE].y();
-        odometry.pose.pose.position.z    = estimator.Ps[WINDOW_SIZE].z();
-        odometry.pose.pose.orientation.x = tmp_Q.x();
-        odometry.pose.pose.orientation.y = tmp_Q.y();
-        odometry.pose.pose.orientation.z = tmp_Q.z();
-        odometry.pose.pose.orientation.w = tmp_Q.w();
-        odometry.twist.twist.linear.x    = estimator.Vs[WINDOW_SIZE].x();
-        odometry.twist.twist.linear.y    = estimator.Vs[WINDOW_SIZE].y();
-        odometry.twist.twist.linear.z    = estimator.Vs[WINDOW_SIZE].z();
-        pub_odometry.publish(odometry);
-
-        geometry_msgs::PoseStamped pose_stamped;
-        pose_stamped.header          = header;
-        pose_stamped.header.frame_id = "world";
-        pose_stamped.pose            = odometry.pose.pose;
-        path.header                  = header;
-        path.header.frame_id         = "world";
-        path.poses.push_back(pose_stamped);
-        pub_path.publish(path);
-
-        Vector3d    correct_t;
-        Vector3d    correct_v;
-        Quaterniond correct_q;
-        correct_t = estimator.drift_correct_r * estimator.Ps[WINDOW_SIZE] + estimator.drift_correct_t;
-        correct_q = estimator.drift_correct_r * estimator.Rs[WINDOW_SIZE];
-        odometry.pose.pose.position.x    = correct_t.x();
-        odometry.pose.pose.position.y    = correct_t.y();
-        odometry.pose.pose.position.z    = correct_t.z();
-        odometry.pose.pose.orientation.x = correct_q.x();
-        odometry.pose.pose.orientation.y = correct_q.y();
-        odometry.pose.pose.orientation.z = correct_q.z();
-        odometry.pose.pose.orientation.w = correct_q.w();
-
-        pose_stamped.pose         = odometry.pose.pose;
-        relo_path.header          = header;
-        relo_path.header.frame_id = "world";
-        relo_path.poses.push_back(pose_stamped);
-        pub_relo_path.publish(relo_path);
-
-        // write result to file
-        ofstream foutC(VINS_RESULT_PATH, ios::app);
-        foutC.setf(ios::fixed, ios::floatfield);
-        foutC.precision(0);
-        foutC << header.stamp.toSec() * 1e9 << ",";
-        foutC.precision(5);
-        foutC << estimator.Ps[WINDOW_SIZE].x() << "," << estimator.Ps[WINDOW_SIZE].y() << ","
-              << estimator.Ps[WINDOW_SIZE].z() << "," << tmp_Q.w() << "," << tmp_Q.x() << "," << tmp_Q.y() << ","
-              << tmp_Q.z() << "," << estimator.Vs[WINDOW_SIZE].x() << "," << estimator.Vs[WINDOW_SIZE].y() << ","
-              << estimator.Vs[WINDOW_SIZE].z() << "," << endl;
-        foutC.close();
+        return;
     }
+    nav_msgs::Odometry odometry;
+    odometry.header          = header;
+    odometry.header.frame_id = "world";
+    odometry.child_frame_id  = "world";
+    Quaterniond tmp_Q;
+    tmp_Q                            = Quaterniond(estimator.Rs[WINDOW_SIZE]);
+    odometry.pose.pose.position.x    = estimator.Ps[WINDOW_SIZE].x();
+    odometry.pose.pose.position.y    = estimator.Ps[WINDOW_SIZE].y();
+    odometry.pose.pose.position.z    = estimator.Ps[WINDOW_SIZE].z();
+    odometry.pose.pose.orientation.x = tmp_Q.x();
+    odometry.pose.pose.orientation.y = tmp_Q.y();
+    odometry.pose.pose.orientation.z = tmp_Q.z();
+    odometry.pose.pose.orientation.w = tmp_Q.w();
+    odometry.twist.twist.linear.x    = estimator.Vs[WINDOW_SIZE].x();
+    odometry.twist.twist.linear.y    = estimator.Vs[WINDOW_SIZE].y();
+    odometry.twist.twist.linear.z    = estimator.Vs[WINDOW_SIZE].z();
+    pub_odometry.publish(odometry);
+
+    geometry_msgs::PoseStamped pose_stamped;
+    pose_stamped.header          = header;
+    pose_stamped.header.frame_id = "world";
+    pose_stamped.pose            = odometry.pose.pose;
+    path.header                  = header;
+    path.header.frame_id         = "world";
+    path.poses.push_back(pose_stamped);
+    pub_path.publish(path);
+
+    Vector3d    correct_t;
+    Vector3d    correct_v;
+    Quaterniond correct_q;
+    correct_t                     = estimator.drift_correct_r * estimator.Ps[WINDOW_SIZE] + estimator.drift_correct_t;
+    correct_q                     = estimator.drift_correct_r * estimator.Rs[WINDOW_SIZE];
+    odometry.pose.pose.position.x = correct_t.x();
+    odometry.pose.pose.position.y = correct_t.y();
+    odometry.pose.pose.position.z = correct_t.z();
+    odometry.pose.pose.orientation.x = correct_q.x();
+    odometry.pose.pose.orientation.y = correct_q.y();
+    odometry.pose.pose.orientation.z = correct_q.z();
+    odometry.pose.pose.orientation.w = correct_q.w();
+
+    pose_stamped.pose         = odometry.pose.pose;
+    relo_path.header          = header;
+    relo_path.header.frame_id = "world";
+    relo_path.poses.push_back(pose_stamped);
+    pub_relo_path.publish(relo_path);
+
+    // write result to file
+    ofstream foutC(VINS_RESULT_PATH, ios::app);
+    foutC.setf(ios::fixed, ios::floatfield);
+    foutC.precision(0);
+    foutC << header.stamp.toSec() * 1e9 << ",";
+    foutC.precision(5);
+    foutC << estimator.Ps[WINDOW_SIZE].x() << "," << estimator.Ps[WINDOW_SIZE].y() << ","
+          << estimator.Ps[WINDOW_SIZE].z() << "," << tmp_Q.w() << "," << tmp_Q.x() << "," << tmp_Q.y() << ","
+          << tmp_Q.z() << "," << estimator.Vs[WINDOW_SIZE].x() << "," << estimator.Vs[WINDOW_SIZE].y() << ","
+          << estimator.Vs[WINDOW_SIZE].z() << "," << endl;
+    foutC.close();
 }
 
 void pubKeyPoses(const Estimator& estimator, const std_msgs::Header& header)
 {
     if (estimator.key_poses.size() == 0)
+    {
         return;
+    }
+
     visualization_msgs::Marker key_poses;
     key_poses.header             = header;
     key_poses.header.frame_id    = "world";
@@ -215,31 +224,32 @@ void pubKeyPoses(const Estimator& estimator, const std_msgs::Header& header)
 
 void pubCameraPose(const Estimator& estimator, const std_msgs::Header& header)
 {
-    int idx2 = WINDOW_SIZE - 1;
-
-    if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)
+    if (estimator.solver_flag != Estimator::SolverFlag::NON_LINEAR)
     {
-        int         i = idx2;
-        Vector3d    P = estimator.Ps[i] + estimator.Rs[i] * estimator.tic[0];
-        Quaterniond R = Quaterniond(estimator.Rs[i] * estimator.ric[0]);
-
-        nav_msgs::Odometry odometry;
-        odometry.header                  = header;
-        odometry.header.frame_id         = "world";
-        odometry.pose.pose.position.x    = P.x();
-        odometry.pose.pose.position.y    = P.y();
-        odometry.pose.pose.position.z    = P.z();
-        odometry.pose.pose.orientation.x = R.x();
-        odometry.pose.pose.orientation.y = R.y();
-        odometry.pose.pose.orientation.z = R.z();
-        odometry.pose.pose.orientation.w = R.w();
-
-        pub_camera_pose.publish(odometry);
-
-        cameraposevisual.reset();
-        cameraposevisual.add_pose(P, R);
-        cameraposevisual.publish_by(pub_camera_pose_visual, odometry.header);
+        return;
     }
+
+    int         idx2 = WINDOW_SIZE - 1;
+    int         i    = idx2;
+    Vector3d    P    = estimator.Ps[i] + estimator.Rs[i] * estimator.tic[0];
+    Quaterniond R    = Quaterniond(estimator.Rs[i] * estimator.ric[0]);
+
+    nav_msgs::Odometry odometry;
+    odometry.header                  = header;
+    odometry.header.frame_id         = "world";
+    odometry.pose.pose.position.x    = P.x();
+    odometry.pose.pose.position.y    = P.y();
+    odometry.pose.pose.position.z    = P.z();
+    odometry.pose.pose.orientation.x = R.x();
+    odometry.pose.pose.orientation.y = R.y();
+    odometry.pose.pose.orientation.z = R.z();
+    odometry.pose.pose.orientation.w = R.w();
+
+    pub_camera_pose.publish(odometry);
+
+    cameraposevisual.reset();
+    cameraposevisual.add_pose(P, R);
+    cameraposevisual.publish_by(pub_camera_pose_visual, odometry.header);
 }
 
 void pubPointCloud(const Estimator& estimator, const std_msgs::Header& header)
@@ -253,9 +263,13 @@ void pubPointCloud(const Estimator& estimator, const std_msgs::Header& header)
         int used_num;
         used_num = it_per_id.feature_per_frame.size();
         if (!(used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+        {
             continue;
+        }
         if (it_per_id.start_frame > WINDOW_SIZE * 3.0 / 4.0 || it_per_id.solve_flag != 1)
+        {
             continue;
+        }
         int      imu_i   = it_per_id.start_frame;
         Vector3d pts_i   = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;
         Vector3d w_pts_i = estimator.Rs[imu_i] * (estimator.ric[0] * pts_i + estimator.tic[0]) + estimator.Ps[imu_i];
@@ -277,7 +291,9 @@ void pubPointCloud(const Estimator& estimator, const std_msgs::Header& header)
         int used_num;
         used_num = it_per_id.feature_per_frame.size();
         if (!(used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+        {
             continue;
+        }
         // if (it_per_id->start_frame > WINDOW_SIZE * 3.0 / 4.0 || it_per_id->solve_flag != 1)
         //         continue;
 
@@ -301,7 +317,9 @@ void pubPointCloud(const Estimator& estimator, const std_msgs::Header& header)
 void pubTF(const Estimator& estimator, const std_msgs::Header& header)
 {
     if (estimator.solver_flag != Estimator::SolverFlag::NON_LINEAR)
+    {
         return;
+    }
     static tf::TransformBroadcaster br;
     tf::Transform                   transform;
     tf::Quaternion                  q;
@@ -345,62 +363,63 @@ void pubTF(const Estimator& estimator, const std_msgs::Header& header)
 void pubKeyframe(const Estimator& estimator)
 {
     // pub camera pose, 2D-3D points of keyframe
-    if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR && estimator.marginalization_flag == 0)
+    if (estimator.solver_flag != Estimator::SolverFlag::NON_LINEAR || estimator.marginalization_flag != 0)
     {
-        int i = WINDOW_SIZE - 2;
-        // Vector3d P = estimator.Ps[i] + estimator.Rs[i] * estimator.tic[0];
-        Vector3d    P = estimator.Ps[i];
-        Quaterniond R = Quaterniond(estimator.Rs[i]);
-
-        nav_msgs::Odometry odometry;
-        odometry.header                  = estimator.Headers[WINDOW_SIZE - 2];
-        odometry.header.frame_id         = "world";
-        odometry.pose.pose.position.x    = P.x();
-        odometry.pose.pose.position.y    = P.y();
-        odometry.pose.pose.position.z    = P.z();
-        odometry.pose.pose.orientation.x = R.x();
-        odometry.pose.pose.orientation.y = R.y();
-        odometry.pose.pose.orientation.z = R.z();
-        odometry.pose.pose.orientation.w = R.w();
-        // printf("time: %f t: %f %f %f r: %f %f %f %f\n", odometry.header.stamp.toSec(), P.x(), P.y(), P.z(), R.w(),
-        // R.x(), R.y(), R.z());
-
-        pub_keyframe_pose.publish(odometry);
-
-        sensor_msgs::PointCloud point_cloud;
-        point_cloud.header = estimator.Headers[WINDOW_SIZE - 2];
-        for (auto& it_per_id : estimator.f_manager.feature)
-        {
-            int frame_size = it_per_id.feature_per_frame.size();
-            // 能被 WINDOW_SIZE - 2帧看到并且是有效的地图点
-            if (it_per_id.start_frame < WINDOW_SIZE - 2 && it_per_id.start_frame + frame_size - 1 >= WINDOW_SIZE - 2 &&
-                it_per_id.solve_flag == 1)
-            {
-                int      imu_i = it_per_id.start_frame;
-                Vector3d pts_i =
-                    it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;  // 相机坐标系下的坐标
-                // 转到世界坐标系
-                Vector3d w_pts_i =
-                    estimator.Rs[imu_i] * (estimator.ric[0] * pts_i + estimator.tic[0]) + estimator.Ps[imu_i];
-                geometry_msgs::Point32 p;
-                p.x = w_pts_i(0);
-                p.y = w_pts_i(1);
-                p.z = w_pts_i(2);
-                point_cloud.points.push_back(p);  // 世界坐标系的坐标
-
-                int                         imu_j = WINDOW_SIZE - 2 - it_per_id.start_frame;
-                sensor_msgs::ChannelFloat32 p_2d;
-                // 在该帧相机坐标系下的归一化坐标以及像素坐标
-                p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].point.x());
-                p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].point.y());
-                p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].uv.x());
-                p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].uv.y());
-                p_2d.values.push_back(it_per_id.feature_id);
-                point_cloud.channels.push_back(p_2d);
-            }
-        }
-        pub_keyframe_point.publish(point_cloud);
+        return;
     }
+
+    int i = WINDOW_SIZE - 2;
+    // Vector3d P = estimator.Ps[i] + estimator.Rs[i] * estimator.tic[0];
+    Vector3d    P = estimator.Ps[i];
+    Quaterniond R = Quaterniond(estimator.Rs[i]);
+
+    nav_msgs::Odometry odometry;
+    odometry.header                  = estimator.Headers[WINDOW_SIZE - 2];
+    odometry.header.frame_id         = "world";
+    odometry.pose.pose.position.x    = P.x();
+    odometry.pose.pose.position.y    = P.y();
+    odometry.pose.pose.position.z    = P.z();
+    odometry.pose.pose.orientation.x = R.x();
+    odometry.pose.pose.orientation.y = R.y();
+    odometry.pose.pose.orientation.z = R.z();
+    odometry.pose.pose.orientation.w = R.w();
+    // printf("time: %f t: %f %f %f r: %f %f %f %f\n", odometry.header.stamp.toSec(), P.x(), P.y(), P.z(), R.w(),
+    // R.x(), R.y(), R.z());
+
+    pub_keyframe_pose.publish(odometry);
+
+    sensor_msgs::PointCloud point_cloud;
+    point_cloud.header = estimator.Headers[WINDOW_SIZE - 2];
+    for (auto& it_per_id : estimator.f_manager.feature)
+    {
+        int frame_size = it_per_id.feature_per_frame.size();
+        // 能被 WINDOW_SIZE - 2帧看到并且是有效的地图点
+        if (it_per_id.start_frame < WINDOW_SIZE - 2 && it_per_id.start_frame + frame_size - 1 >= WINDOW_SIZE - 2 &&
+            it_per_id.solve_flag == 1)
+        {
+            int      imu_i = it_per_id.start_frame;
+            Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;
+            // 相机坐标系下的坐标转到世界坐标系
+            Vector3d w_pts_i =
+                estimator.Rs[imu_i] * (estimator.ric[0] * pts_i + estimator.tic[0]) + estimator.Ps[imu_i];
+            geometry_msgs::Point32 p;
+            p.x = w_pts_i(0);
+            p.y = w_pts_i(1);
+            p.z = w_pts_i(2);
+            point_cloud.points.push_back(p);  // 世界坐标系的坐标
+
+            int                         imu_j = WINDOW_SIZE - 2 - it_per_id.start_frame;
+            sensor_msgs::ChannelFloat32 p_2d;
+            // 在该帧相机坐标系下的归一化坐标以及像素坐标
+            p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].point.x());
+            p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].point.y());
+            p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].uv.x());
+            p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].uv.y());
+            p_2d.values.push_back(it_per_id.feature_id);
+            point_cloud.channels.push_back(p_2d);
+        }
+    }
+    pub_keyframe_point.publish(point_cloud);
 }
 
 void pubRelocalization(const Estimator& estimator)

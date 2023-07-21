@@ -404,8 +404,8 @@ void process()
                 pubRelocalization(estimator);
             }
 
-            LOG(ERROR) << "process --- end: " << TimestampPrint(img_msg->header.stamp.toNSec()) << ", at "
-                       << TimestampPrint(ros::Time::now().toNSec()) << "\n\n";
+            LOG(INFO) << "process --- end: " << TimestampPrint(img_msg->header.stamp.toNSec()) << ", at "
+                      << TimestampPrint(ros::Time::now().toNSec()) << "\n\n";
         }
 
         m_estimator.unlock();
