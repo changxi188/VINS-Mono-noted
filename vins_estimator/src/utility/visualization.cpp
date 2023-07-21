@@ -282,7 +282,7 @@ void pubPointCloud(const Estimator& estimator, const std_msgs::Header& header)
     }
     pub_point_cloud.publish(point_cloud);
 
-    // pub margined potin
+    // pub margined point
     sensor_msgs::PointCloud margin_cloud;
     margin_cloud.header = header;
 

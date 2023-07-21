@@ -395,92 +395,100 @@ void process()
         m_buf.unlock();
 
         // 至此取出了时间戳同步的原图，KF和地图点信息
-        if (pose_msg != NULL)  // 判断一下是否有效
+        if (pose_msg == NULL)  // 判断一下是否有效
         {
-            LOG(WARNING) << "process --- pose time " << pose_msg->header.stamp.toSec();
-            LOG(WARNING) << "process --- point time " << point_msg->header.stamp.toSec();
-            LOG(WARNING) << "process --- image time " << image_msg->header.stamp.toSec();
-            // skip fisrt few
-            if (skip_first_cnt < SKIP_FIRST_CNT)  // 跳过最开始的SKIP_FIRST_CNT帧
-            {
-                skip_first_cnt++;
-                continue;
-            }
+            // LOG(WARNING) << "process --- failed get measurement";
 
-            if (skip_cnt < SKIP_CNT)  // 降频，每隔SKIP_CNT帧处理一次
-            {
-                skip_cnt++;
-                continue;
-            }
-            else
-            {
-                skip_cnt = 0;
-            }
-            // 通过cvbridge得到opencv格式的图像
-            cv_bridge::CvImageConstPtr ptr;
-            if (image_msg->encoding == "8UC1")
-            {
-                sensor_msgs::Image img;
-                img.header       = image_msg->header;
-                img.height       = image_msg->height;
-                img.width        = image_msg->width;
-                img.is_bigendian = image_msg->is_bigendian;
-                img.step         = image_msg->step;
-                img.data         = image_msg->data;
-                img.encoding     = "mono8";
-                ptr              = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::MONO8);
-            }
-            else
-            {
-                ptr = cv_bridge::toCvCopy(image_msg, sensor_msgs::image_encodings::MONO8);
-            }
+            std::chrono::milliseconds dura(5);
+            std::this_thread::sleep_for(dura);
+            continue;
+        }
 
-            cv::Mat image = ptr->image;
-            // build keyframe
-            // 得到KF的位姿，转成eigen格式
-            Vector3d T = Vector3d(pose_msg->pose.pose.position.x, pose_msg->pose.pose.position.y,
-                                  pose_msg->pose.pose.position.z);
-            Matrix3d R = Quaterniond(pose_msg->pose.pose.orientation.w, pose_msg->pose.pose.orientation.x,
-                                     pose_msg->pose.pose.orientation.y, pose_msg->pose.pose.orientation.z)
-                             .toRotationMatrix();
-            if ((T - last_t).norm() > SKIP_DIS)  // 要求KF相隔必要的平移距离
+        LOG(INFO) << "process --- pose time " << pose_msg->header.stamp.toSec();
+        LOG(INFO) << "process --- point time " << point_msg->header.stamp.toSec();
+        LOG(INFO) << "process --- image time " << image_msg->header.stamp.toSec();
+
+        // skip fisrt few
+        if (skip_first_cnt < SKIP_FIRST_CNT)  // 跳过最开始的SKIP_FIRST_CNT帧
+        {
+            skip_first_cnt++;
+            continue;
+        }
+
+        if (skip_cnt < SKIP_CNT)  // 降频，每隔SKIP_CNT帧处理一次
+        {
+            skip_cnt++;
+            continue;
+        }
+        else
+        {
+            skip_cnt = 0;
+        }
+
+        // 通过cvbridge得到opencv格式的图像
+        cv_bridge::CvImageConstPtr ptr;
+        if (image_msg->encoding == "8UC1")
+        {
+            sensor_msgs::Image img;
+            img.header       = image_msg->header;
+            img.height       = image_msg->height;
+            img.width        = image_msg->width;
+            img.is_bigendian = image_msg->is_bigendian;
+            img.step         = image_msg->step;
+            img.data         = image_msg->data;
+            img.encoding     = "mono8";
+            ptr              = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::MONO8);
+        }
+        else
+        {
+            ptr = cv_bridge::toCvCopy(image_msg, sensor_msgs::image_encodings::MONO8);
+        }
+
+        cv::Mat image = ptr->image;
+        // build keyframe
+        // 得到KF的位姿，转成eigen格式
+        Vector3d T =
+            Vector3d(pose_msg->pose.pose.position.x, pose_msg->pose.pose.position.y, pose_msg->pose.pose.position.z);
+        Matrix3d R = Quaterniond(pose_msg->pose.pose.orientation.w, pose_msg->pose.pose.orientation.x,
+                                 pose_msg->pose.pose.orientation.y, pose_msg->pose.pose.orientation.z)
+                         .toRotationMatrix();
+        if ((T - last_t).norm() > SKIP_DIS)  // 要求KF相隔必要的平移距离
+        {
+            vector<cv::Point3f> point_3d;         // VIO世界坐标系下的地图点坐标
+            vector<cv::Point2f> point_2d_uv;      // 归一化相机坐标系的坐标
+            vector<cv::Point2f> point_2d_normal;  // 像素坐标
+            vector<double>      point_id;         // 地图点的idx
+            // 遍历所有的地图点
+            for (unsigned int i = 0; i < point_msg->points.size(); i++)
             {
-                vector<cv::Point3f> point_3d;         // VIO世界坐标系下的地图点坐标
-                vector<cv::Point2f> point_2d_uv;      // 归一化相机坐标系的坐标
-                vector<cv::Point2f> point_2d_normal;  // 像素坐标
-                vector<double>      point_id;         // 地图点的idx
-                // 遍历所有的地图点
-                for (unsigned int i = 0; i < point_msg->points.size(); i++)
-                {
-                    cv::Point3f p_3d;
-                    p_3d.x = point_msg->points[i].x;
-                    p_3d.y = point_msg->points[i].y;
-                    p_3d.z = point_msg->points[i].z;
-                    point_3d.push_back(p_3d);  // 转成eigen的格式
+                cv::Point3f p_3d;
+                p_3d.x = point_msg->points[i].x;
+                p_3d.y = point_msg->points[i].y;
+                p_3d.z = point_msg->points[i].z;
+                point_3d.push_back(p_3d);  // 转成eigen的格式
 
-                    cv::Point2f p_2d_uv, p_2d_normal;
-                    double      p_id;
-                    p_2d_normal.x = point_msg->channels[i].values[0];
-                    p_2d_normal.y = point_msg->channels[i].values[1];
-                    p_2d_uv.x     = point_msg->channels[i].values[2];
-                    p_2d_uv.y     = point_msg->channels[i].values[3];
-                    p_id          = point_msg->channels[i].values[4];
-                    point_2d_normal.push_back(p_2d_normal);
-                    point_2d_uv.push_back(p_2d_uv);
-                    point_id.push_back(p_id);
+                cv::Point2f p_2d_uv, p_2d_normal;
+                double      p_id;
+                p_2d_normal.x = point_msg->channels[i].values[0];
+                p_2d_normal.y = point_msg->channels[i].values[1];
+                p_2d_uv.x     = point_msg->channels[i].values[2];
+                p_2d_uv.y     = point_msg->channels[i].values[3];
+                p_id          = point_msg->channels[i].values[4];
+                point_2d_normal.push_back(p_2d_normal);
+                point_2d_uv.push_back(p_2d_uv);
+                point_id.push_back(p_id);
 
-                    // printf("u %f, v %f \n", p_2d_uv.x, p_2d_uv.y);
-                }
-                // 创建回环检测节点的KF
-                KeyFrame* keyframe = new KeyFrame(pose_msg->header.stamp.toSec(), frame_index, T, R, image, point_3d,
-                                                  point_2d_uv, point_2d_normal, point_id, sequence);
-                m_process.lock();
-                start_flag = 1;
-                posegraph.addKeyFrame(keyframe, 1);  // 回环检测核心入口函数
-                m_process.unlock();
-                frame_index++;
-                last_t = T;
+                // printf("u %f, v %f \n", p_2d_uv.x, p_2d_uv.y);
             }
+            // 创建回环检测节点的KF
+            KeyFrame* keyframe = new KeyFrame(pose_msg->header.stamp.toSec(), frame_index, T, R, image, point_3d,
+                                              point_2d_uv, point_2d_normal, point_id, sequence);
+            m_process.lock();
+            start_flag = 1;
+            posegraph.addKeyFrame(keyframe, 1);  // 回环检测核心入口函数
+            m_process.unlock();
+            frame_index++;
+            last_t = T;
         }
 
         std::chrono::milliseconds dura(5);

@@ -25,6 +25,7 @@ PoseGraph::~PoseGraph()
 {
     t_optimization.join();
 }
+
 /**
  * @brief 注册一些发布publisher
  *
@@ -375,9 +376,11 @@ int PoseGraph::detectLoop(KeyFrame* keyframe, int frame_index)
             cv::hconcat(loop_result, tmp_image, loop_result);
         }
     }
+
     // a good match with its nerghbour
     // ret按照得分大小降序排列的，这里确保返回的候选KF数目至少一个且得分满足要求
     if (ret.size() >= 1 && ret[0].Score > 0.05)
+    {
         // 开始遍历其他候选帧
         for (unsigned int i = 1; i < ret.size(); i++)
         {
@@ -397,6 +400,8 @@ int PoseGraph::detectLoop(KeyFrame* keyframe, int frame_index)
                 }
             }
         }
+    }
+
     /*
         if (DEBUG_IMAGE)
         {
@@ -416,7 +421,9 @@ int PoseGraph::detectLoop(KeyFrame* keyframe, int frame_index)
         return min_index;  // 当前帧和min_index形成了回环
     }
     else
+    {
         return -1;  // -1代表回环失败
+    }
 }
 
 void PoseGraph::addKeyFrameIntoVoc(KeyFrame* keyframe)
@@ -456,7 +463,7 @@ void PoseGraph::optimize4DoF()
         m_optimize_buf.unlock();
         if (cur_index != -1)
         {
-            printf("optimize pose graph \n");
+            LOG(INFO) << "optimize4DoF --- optimize pose graph ";
             TicToc tmp_t;
             m_keyframelist.lock();
             KeyFrame* cur_kf = getKeyFrame(cur_index);  // 取出当前帧对应的KF指针
